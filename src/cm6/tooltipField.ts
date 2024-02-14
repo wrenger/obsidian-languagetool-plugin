@@ -5,7 +5,7 @@ import { setIcon } from 'obsidian';
 import LanguageToolPlugin from 'src';
 import { UnderlineEffect, clearUnderlinesInRange, underlineField, ignoreUnderline } from './underlineStateField';
 
-function contructTooltip(plugin: LanguageToolPlugin, view: EditorView, underline: UnderlineEffect) {
+function constructTooltip(plugin: LanguageToolPlugin, view: EditorView, underline: UnderlineEffect) {
 	const match = underline.match;
 	const message = match.message;
 	const title = match.shortMessage;
@@ -113,6 +113,22 @@ function contructTooltip(plugin: LanguageToolPlugin, view: EditorView, underline
 					};
 				}
 			});
+			if (category !== 'TYPOS') {
+				container.createEl('button', { cls: 'lt-ignore-btn' }, button => {
+					setIcon(button.createSpan(), 'circle-off');
+					button.createSpan({ text: 'Disable rule' });
+					button.onclick = () => {
+						if (plugin.settings.ruleOtherDisabledRules)
+							plugin.settings.ruleOtherDisabledRules += ',' + ruleId;
+						else plugin.settings.ruleOtherDisabledRules = ruleId;
+						plugin.saveSettings();
+
+						view.dispatch({
+							effects: [clearUnderlineEffect],
+						});
+					};
+				});
+			}
 		});
 	});
 }
@@ -154,7 +170,7 @@ function getTooltip(tooltips: readonly Tooltip[], plugin: LanguageToolPlugin, st
 				arrow: false,
 				create: view => {
 					return {
-						dom: contructTooltip(plugin, view, primaryUnderline as UnderlineEffect),
+						dom: constructTooltip(plugin, view, primaryUnderline as UnderlineEffect),
 					};
 				},
 			},
