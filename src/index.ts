@@ -8,8 +8,6 @@ import { hashString } from './helpers';
 import { getDetectionResult } from './api';
 import { buildUnderlineExtension } from './cm6/underlineExtension';
 import { addUnderline, clearUnderlines, clearUnderlinesInRange, underlineField } from './cm6/underlineStateField';
-import LegacyLanguageToolPlugin from './cm5/LegacyPlugin';
-import { legacyClearMarks } from './cm5/helpers';
 
 export default class LanguageToolPlugin extends Plugin {
 	public settings: LanguageToolPluginSettings;
@@ -18,13 +16,7 @@ export default class LanguageToolPlugin extends Plugin {
 	private hashLru: QuickLRU<number, LanguageToolApi>;
 	private isloading = false;
 
-	// Legacy editor
-	private isLegacyEditor: boolean;
-	private legacyPlugin: LegacyLanguageToolPlugin;
-
 	public async onload() {
-		this.isLegacyEditor = Boolean(!(this.app as any).isMobile && (this.app.vault as any).getConfig('legacyEditor'));
-
 		// Settings
 		await this.loadSettings();
 		let unmodifiedSettings = await this.loadData();
@@ -37,8 +29,8 @@ export default class LanguageToolPlugin extends Plugin {
 				serverUrl === 'https://api.languagetool.org'
 					? 'standard'
 					: serverUrl === 'https://api.languagetoolplus.com'
-					? 'premium'
-					: 'custom';
+						? 'premium'
+						: 'custom';
 			try {
 				await this.saveSettings();
 				await this.loadSettings();
@@ -48,7 +40,7 @@ export default class LanguageToolPlugin extends Plugin {
 			}
 		}
 
-		if (this.settings.serverUrl.includes('/v2/check')) {
+		if (this.settings.serverUrl.endsWith('/v2/check')) {
 			new Notice(
 				"invalid or outdated LanguageTool Settings, I'm trying to fix it.\nIf it does not work, simply reinstall the plugin",
 				10000,
@@ -71,25 +63,16 @@ export default class LanguageToolPlugin extends Plugin {
 		});
 
 		// Editor functionality
-		if (this.isLegacyEditor) {
-			this.legacyPlugin = new LegacyLanguageToolPlugin(this);
-			await this.legacyPlugin.onload();
-		} else {
-			this.hashLru = new QuickLRU<number, LanguageToolApi>({
-				maxSize: 10,
-			});
-			this.registerEditorExtension(buildUnderlineExtension(this));
-		}
+		this.hashLru = new QuickLRU<number, LanguageToolApi>({
+			maxSize: 10,
+		});
+		this.registerEditorExtension(buildUnderlineExtension(this));
 
 		// Commands
 		this.registerCommands();
 	}
 
 	public onunload() {
-		if (this.isLegacyEditor) {
-			this.legacyPlugin.onunload();
-		}
-
 		this.hashLru.clear();
 	}
 
@@ -98,23 +81,9 @@ export default class LanguageToolPlugin extends Plugin {
 			id: 'ltcheck-text',
 			name: 'Check Text',
 			editorCallback: (editor, view) => {
-				if (this.isLegacyEditor) {
-					const cm = (editor as any).cm as CodeMirror.Editor;
-
-					if (editor.somethingSelected()) {
-						this.legacyPlugin.runDetection(cm, cm.getCursor('from'), cm.getCursor('to')).catch(e => {
-							console.error(e);
-						});
-					} else {
-						this.legacyPlugin.runDetection(cm).catch(e => {
-							console.error(e);
-						});
-					}
-				} else {
-					this.runDetection((editor as any).cm as EditorView, view).catch(e => {
-						console.error(e);
-					});
-				}
+				this.runDetection((editor as any).cm as EditorView, view).catch(e => {
+					console.error(e);
+				});
 			},
 		});
 
@@ -131,19 +100,13 @@ export default class LanguageToolPlugin extends Plugin {
 			id: 'ltclear',
 			name: 'Clear Suggestions',
 			editorCallback: editor => {
-				if (this.isLegacyEditor) {
-					if (this.legacyPlugin.markerMap.size > 0) {
-						const cm = (editor as any).cm as CodeMirror.Editor;
-						legacyClearMarks(this.legacyPlugin.markerMap, cm);
-					}
-				} else {
-					const cm = (editor as any).cm as EditorView;
-					cm.dispatch({
-						effects: [clearUnderlines.of(null)],
-					});
-				}
+				const cm = (editor as any).cm as EditorView;
+				cm.dispatch({
+					effects: [clearUnderlines.of(null)],
+				});
 			},
 		});
+
 		this.addCommand({
 			id: 'ltjump-to-next-suggestion',
 			name: 'Jump to next Suggestion',
@@ -254,11 +217,7 @@ export default class LanguageToolPlugin extends Plugin {
 					const activeLeaf = this.app.workspace.activeLeaf;
 					if (activeLeaf?.view instanceof MarkdownView && activeLeaf.view.getMode() === 'source') {
 						try {
-							if (this.isLegacyEditor) {
-								await this.legacyPlugin.runDetection((activeLeaf.view.editor as any).cm);
-							} else {
-								await this.runDetection((activeLeaf.view.editor as any).cm, activeLeaf.view);
-							}
+							await this.runDetection((activeLeaf.view.editor as any).cm, activeLeaf.view);
 						} catch (e) {
 							console.error(e);
 						}
@@ -280,15 +239,10 @@ export default class LanguageToolPlugin extends Plugin {
 					const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 					if (!view) return;
 
-					if (this.isLegacyEditor) {
-						const cm = (view.editor as any).cm as CodeMirror.Editor;
-						legacyClearMarks(this.legacyPlugin.markerMap, cm);
-					} else {
-						const cm = (view.editor as any).cm as EditorView;
-						cm.dispatch({
-							effects: [clearUnderlines.of(null)],
-						});
-					}
+					const cm = (view.editor as any).cm as EditorView;
+					cm.dispatch({
+						effects: [clearUnderlines.of(null)],
+					});
 				});
 			})
 			.showAtPosition({
