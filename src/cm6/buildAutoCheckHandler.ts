@@ -14,9 +14,10 @@ export function buildAutoCheckHandler(plugin: LanguageToolPlugin) {
 
 		// @ts-ignore
 		const markdownView = view.state.field(editorViewField);
+		if (!markdownView) return false;
 
-		minRange = Math.min(minRange, Math.min(from, to));
-		maxRange = Math.max(maxRange, Math.max(from, to));
+		minRange = Math.min(minRange, from, to);
+		maxRange = Math.max(maxRange, from, to);
 
 		clearTimeout(debounceTimer);
 
@@ -24,7 +25,7 @@ export function buildAutoCheckHandler(plugin: LanguageToolPlugin) {
 			const startLine = view.lineBlockAt(minRange);
 			const endLine = view.lineBlockAt(maxRange);
 
-			plugin.runDetection(view, markdownView as MarkdownView, startLine.from, endLine.to).catch(e => {
+			plugin.runDetection(view, markdownView, startLine.from, endLine.to).catch(e => {
 				console.error(e);
 			});
 		}, plugin.settings.autoCheckDelay);
