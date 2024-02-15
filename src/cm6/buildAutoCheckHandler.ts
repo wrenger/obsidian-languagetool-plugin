@@ -1,8 +1,9 @@
+import { Extension } from "@codemirror/state";
 import { EditorView } from '@codemirror/view';
-import { editorViewField, MarkdownView } from 'obsidian';
+import { editorViewField } from 'obsidian';
 import LanguageToolPlugin from 'src';
 
-export function buildAutoCheckHandler(plugin: LanguageToolPlugin) {
+export function buildAutoCheckHandler(plugin: LanguageToolPlugin): Extension {
 	let debounceTimer = -1;
 	let minRange = Infinity;
 	let maxRange = -Infinity;

@@ -8,16 +8,7 @@ export function buildUnderlineExtension(plugin: LanguageToolPlugin) {
 	return [
 		tooltips({
 			position: 'absolute',
-			tooltipSpace: view => {
-				const rect = view.dom.getBoundingClientRect();
-
-				return {
-					top: rect.top,
-					left: rect.left,
-					bottom: rect.bottom,
-					right: rect.right,
-				};
-			},
+			tooltipSpace: view => view.dom.getBoundingClientRect(),
 		}),
 		// ignoredUnderlineField must come before underlineField
 		ignoredUnderlineField,

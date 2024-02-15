@@ -1,8 +1,52 @@
 import * as Remark from 'annotatedtext-remark';
 import { Notice } from 'obsidian';
 import { getRuleCategories } from './helpers';
-import { LanguageToolApi } from './LanguageToolTypings';
-import { LanguageToolPluginSettings } from './SettingsTab';
+import { LTSettings } from './settingsTab';
+
+/** A typo or grammar issue detected by LanguageTool */
+export interface LTMatch {
+	from: number;
+	to: number;
+	title: string;
+	message: string;
+	replacements: string[];
+	categoryId: string;
+	ruleId: string;
+}
+
+interface LTResponse {
+	// software: Software;
+	// language: Language;
+	matches?: MatchesEntity[];
+}
+interface MatchesEntity {
+	message: string;
+	shortMessage: string;
+	replacements?: { value: string }[];
+	offset: number;
+	length: number;
+	context: Context;
+	sentence: string;
+	rule: Rule;
+}
+interface Context {
+	text: string;
+	offset: number;
+	length: number;
+}
+interface Rule {
+	id: string;
+	subId: string;
+	description: string;
+	urls: { value: string }[];
+	issueType: string;
+	category: Category;
+}
+interface Category {
+	id: string;
+	name: string;
+}
+
 
 export const logs: string[] = [];
 
@@ -10,8 +54,8 @@ let lastStatus: 'ok' | 'request-failed' | 'request-not-ok' | 'json-parse-error' 
 
 export async function getDetectionResult(
 	text: string,
-	getSettings: () => LanguageToolPluginSettings,
-): Promise<LanguageToolApi> {
+	getSettings: () => LTSettings,
+): Promise<LTMatch[]> {
 	const parsedText = Remark.build(text, {
 		...Remark.defaults,
 		interpretmarkup(text = ''): string {
@@ -74,12 +118,12 @@ export async function getDetectionResult(
 		params.preferredVariants = `${params.preferredVariants ? `${params.preferredVariants},` : ''}${settings.catalanVeriety}`;
 	}
 
-	if (settings.apikey && settings.username && settings.apikey.length > 1 && settings.username.length > 1) {
+	if (settings.apikey && settings.username) {
 		params.username = settings.username;
 		params.apiKey = settings.apikey;
 	}
 
-	if (settings.staticLanguage && settings.staticLanguage.length > 0 && settings.staticLanguage !== 'auto') {
+	if (settings.staticLanguage && settings.staticLanguage !== 'auto') {
 		params.language = settings.staticLanguage;
 	}
 
@@ -116,7 +160,7 @@ export async function getDetectionResult(
 		return Promise.reject(new Error(`unexpected status ${res.status}, see network tab`));
 	}
 
-	let body: LanguageToolApi;
+	let body: LTResponse;
 	try {
 		body = await res.json();
 	} catch (e) {
@@ -134,10 +178,20 @@ export async function getDetectionResult(
 		lastStatus = status;
 	}
 
-	return body;
+	return body.matches?.map(match => {
+		return {
+			from: match.offset,
+			to: match.offset + match.length,
+			title: match.shortMessage,
+			message: match.message,
+			replacements: match.replacements?.map(r => r.value) ?? [],
+			categoryId: match.rule.category.id,
+			ruleId: match.rule.id,
+		};
+	}) ?? [];
 }
 
-export async function pushLogs(res: Response, settings: LanguageToolPluginSettings): Promise<void> {
+export async function pushLogs(res: Response, settings: LTSettings): Promise<void> {
 	let debugString = `${new Date().toLocaleString()}:
   url used for request: ${res.url}
   Status: ${res.status}

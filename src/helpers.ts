@@ -1,8 +1,6 @@
-import { LanguageToolPluginSettings } from './SettingsTab';
+import { LTSettings } from './settingsTab';
 
-export const ignoreListRegEx = /frontmatter|code|math|templater|blockid|hashtag|internal/;
-
-export function hashString(value: string) {
+export function hashString(value: string): number {
 	let hash = 0;
 	if (value.length === 0) {
 		return hash;
@@ -16,7 +14,7 @@ export function hashString(value: string) {
 }
 
 // Assign a CSS class based on a rule's category ID
-export function getIssueTypeClassName(categoryId: string) {
+export function categoryCssClass(categoryId: string): string {
 	switch (categoryId) {
 		case 'COLLOQUIALISMS':
 		case 'REDUNDANCY':
@@ -32,7 +30,7 @@ export function getIssueTypeClassName(categoryId: string) {
 }
 
 // Construct a list of enabled / disabled rules
-export function getRuleCategories(settings: LanguageToolPluginSettings) {
+export function getRuleCategories(settings: LTSettings): { enabledCategories: string[]; disabledCategories: string[] } {
 	const enabledCategories: string[] = settings.ruleOtherCategories ? settings.ruleOtherCategories.split(',') : [];
 	const disabledCategories: string[] = settings.ruleOtherDisabledRules
 		? settings.ruleOtherDisabledRules.split(',')

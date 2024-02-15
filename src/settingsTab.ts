@@ -11,17 +11,23 @@ import {
 import LanguageToolPlugin from '.';
 import { logs } from './api';
 
-const MinuteInSeconds = 60;
-const SecondToMillisecondConversion = 1000;
+const secsPerMin = 60;
+const millis = 1000;
 const StandardMaxRequestsPerMinute = 20;
 const PremiumMaxRequestsPerMinute = 80;
 
 const MaxAutoCheckDelay = 3000;
 const AutoCheckDelayStep = 200;
-const MinStandardAutoCheckDelay = (MinuteInSeconds / StandardMaxRequestsPerMinute) * SecondToMillisecondConversion;
-const MinPremiumAutoCheckDelay = (MinuteInSeconds / PremiumMaxRequestsPerMinute) * SecondToMillisecondConversion;
+const MinStandardAutoCheckDelay = (secsPerMin / StandardMaxRequestsPerMinute) * millis;
+const MinPremiumAutoCheckDelay = (secsPerMin / PremiumMaxRequestsPerMinute) * millis;
 
-export interface LanguageToolPluginSettings {
+export interface Language {
+	name: string;
+	code: string;
+	longCode: string;
+}
+
+export interface LTSettings {
 	shouldAutoCheck: boolean;
 	autoCheckDelay: number;
 
@@ -46,7 +52,7 @@ export interface LanguageToolPluginSettings {
 	ruleOtherDisabledRules?: string;
 }
 
-export const DEFAULT_SETTINGS: LanguageToolPluginSettings = {
+export const DEFAULT_SETTINGS: LTSettings = {
 	serverUrl: 'https://api.languagetool.org',
 	urlMode: 'standard',
 
@@ -59,7 +65,7 @@ export const DEFAULT_SETTINGS: LanguageToolPluginSettings = {
 	pickyMode: false,
 };
 
-function getServerUrl(value: string) {
+function getServerUrl(value: string): string {
 	return value === 'standard'
 		? 'https://api.languagetool.org'
 		: value === 'premium'
@@ -67,13 +73,13 @@ function getServerUrl(value: string) {
 		: '';
 }
 
-function getMinAllowedAutoCheckDelay(value: string) {
+function getMinAllowedAutoCheckDelay(value: string): number {
 	return value === 'standard' ? MinStandardAutoCheckDelay : value === 'premium' ? MinPremiumAutoCheckDelay : 0;
 }
 
-export class LanguageToolSettingsTab extends PluginSettingTab {
+export class LTSettingsTab extends PluginSettingTab {
 	private readonly plugin: LanguageToolPlugin;
-	private languages: { name: string; code: string; longCode: string }[];
+	private languages: Language[];
 	public constructor(app: App, plugin: LanguageToolPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
@@ -90,7 +96,7 @@ export class LanguageToolSettingsTab extends PluginSettingTab {
 		delaySlider?.setLimits(minAllowedAutoCheckDelay, MaxAutoCheckDelay, AutoCheckDelayStep);
 	}
 
-	public async requestLanguages() {
+	public async requestLanguages(): Promise<Language[]> {
 		if (this.languages) return this.languages;
 		const languages = await fetch(`${this.plugin.settings.serverUrl}/v2/languages`).then(res => res.json());
 		this.languages = languages;

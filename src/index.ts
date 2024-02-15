@@ -2,21 +2,20 @@ import { Command, MarkdownView, Menu, Notice, Plugin, setIcon } from 'obsidian';
 import { Decoration, EditorView } from '@codemirror/view';
 import { StateEffect } from '@codemirror/state';
 import QuickLRU from 'quick-lru';
-import { DEFAULT_SETTINGS, LanguageToolPluginSettings, LanguageToolSettingsTab } from './SettingsTab';
-import { LanguageToolApi } from './LanguageToolTypings';
+import { DEFAULT_SETTINGS, LTSettings, LTSettingsTab } from './settingsTab';
 import { hashString } from './helpers';
-import { getDetectionResult, synonyms } from './api';
+import { LTMatch, getDetectionResult, synonyms } from './api';
 import { buildUnderlineExtension } from './cm6/underlineExtension';
 import { addUnderline, clearUnderlines, clearUnderlinesInRange, underlineField } from './cm6/underlineStateField';
 
 export default class LanguageToolPlugin extends Plugin {
-	public settings: LanguageToolPluginSettings;
+	public settings: LTSettings;
 	private statusBarText: HTMLElement;
 
-	private hashLru: QuickLRU<number, LanguageToolApi>;
-	private isloading = false;
+	private hashLru: QuickLRU<number, LTMatch[]>;
+	private isLoading = false;
 
-	public async onload() {
+	public async onload(): Promise<void> {
 		// Settings
 		await this.loadSettings();
 		let unmodifiedSettings = await this.loadData();
@@ -53,7 +52,7 @@ export default class LanguageToolPlugin extends Plugin {
 			}
 		}
 
-		this.addSettingTab(new LanguageToolSettingsTab(this.app, this));
+		this.addSettingTab(new LTSettingsTab(this.app, this));
 
 		// Status bar
 		this.app.workspace.onLayoutReady(() => {
@@ -63,7 +62,7 @@ export default class LanguageToolPlugin extends Plugin {
 		});
 
 		// Editor functionality
-		this.hashLru = new QuickLRU<number, LanguageToolApi>({
+		this.hashLru = new QuickLRU<number, LTMatch[]>({
 			maxSize: 10,
 		});
 		this.registerEditorExtension(buildUnderlineExtension(this));
@@ -136,6 +135,8 @@ export default class LanguageToolPlugin extends Plugin {
 		this.addCommand(this.getApplySuggestionCommand(1));
 		this.addCommand(this.getApplySuggestionCommand(2));
 		this.addCommand(this.getApplySuggestionCommand(3));
+		this.addCommand(this.getApplySuggestionCommand(4));
+		this.addCommand(this.getApplySuggestionCommand(5));
 	}
 
 	private getApplySuggestionCommand(n: number): Command {
@@ -147,7 +148,7 @@ export default class LanguageToolPlugin extends Plugin {
 				const editorView = editor.cm as EditorView;
 				const cursorOffset = editor.posToOffset(editor.getCursor());
 
-				const relevantMatches: {
+				const matches: {
 					from: number;
 					to: number;
 					value: Decoration;
@@ -155,12 +156,12 @@ export default class LanguageToolPlugin extends Plugin {
 
 				// Get underline-matches at cursor
 				editorView.state.field(underlineField).between(cursorOffset, cursorOffset, (from, to, value) => {
-					relevantMatches.push({ from, to, value });
+					matches.push({ from, to, value });
 				});
 
 				// Check that there is exactly one match that has a replacement in the slot that is called.
 				const preconditionsSuccessfull =
-					relevantMatches.length === 1 && relevantMatches[0]?.value?.spec?.underline?.replacements?.length >= n;
+					matches.length === 1 && matches[0]?.value?.spec?.underline?.replacements?.length >= n;
 
 				if (checking) return preconditionsSuccessfull;
 
@@ -170,7 +171,7 @@ export default class LanguageToolPlugin extends Plugin {
 				}
 
 				// At this point, the check must have been successful.
-				const { from, to, value } = relevantMatches[0];
+				const { from, to, value } = matches[0];
 				const change = {
 					from,
 					to,
@@ -234,7 +235,7 @@ export default class LanguageToolPlugin extends Plugin {
 	}
 
 	public setStatusBarReady() {
-		this.isloading = false;
+		this.isLoading = false;
 		this.statusBarText.empty();
 		this.statusBarText.createSpan({ cls: 'lt-status-bar-btn' }, span => {
 			span.createSpan({
@@ -245,9 +246,9 @@ export default class LanguageToolPlugin extends Plugin {
 	}
 
 	public setStatusBarWorking() {
-		if (this.isloading) return;
+		if (this.isLoading) return;
 
-		this.isloading = true;
+		this.isLoading = true;
 		this.statusBarText.empty();
 		this.statusBarText.createSpan({ cls: ['lt-status-bar-btn', 'lt-loading'] }, span => {
 			setIcon(span, 'sync-small');
@@ -300,7 +301,7 @@ export default class LanguageToolPlugin extends Plugin {
 			});
 	};
 
-	public async runDetection(editor: EditorView, view: MarkdownView, from?: number, to?: number) {
+	public async runDetection(editor: EditorView, view: MarkdownView, from?: number, to?: number): Promise<void> {
 		this.setStatusBarWorking();
 
 		const selection = editor.state.selection.main;
@@ -326,13 +327,13 @@ export default class LanguageToolPlugin extends Plugin {
 
 		const hash = hashString(text);
 
-		let res: LanguageToolApi;
+		let matches: LTMatch[];
 		if (this.hashLru.has(hash)) {
-			res = this.hashLru.get(hash)!;
+			matches = this.hashLru.get(hash)!;
 		} else {
 			try {
-				res = await getDetectionResult(text, () => this.settings);
-				this.hashLru.set(hash, res);
+				matches = await getDetectionResult(text, () => this.settings);
+				this.hashLru.set(hash, matches);
 			} catch (e) {
 				this.setStatusBarReady();
 				return Promise.reject(e);
@@ -352,39 +353,24 @@ export default class LanguageToolPlugin extends Plugin {
 			effects.push(clearUnderlines.of(null));
 		}
 
-		if (res.matches) {
-			for (const match of res.matches) {
-				const start = match.offset + offset;
-				const end = match.offset + offset + match.length;
-
-				effects.push(
-					addUnderline.of({
-						from: start,
-						to: end,
-						title: match.shortMessage,
-						message: match.message,
-						categoryId: match.rule.category.id,
-						ruleId: match.rule.id,
-						replacements: match.replacements?.map(r => r.value) ?? [],
-					}),
-				);
+		if (matches) {
+			for (const match of matches) {
+				effects.push(addUnderline.of(match));
 			}
 		}
 
 		if (effects.length) {
-			editor.dispatch({
-				effects,
-			});
+			editor.dispatch({ effects });
 		}
 
 		this.setStatusBarReady();
 	}
 
-	public async loadSettings() {
+	public async loadSettings(): Promise<void> {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
 	}
 
-	public async saveSettings() {
+	public async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
 	}
 }

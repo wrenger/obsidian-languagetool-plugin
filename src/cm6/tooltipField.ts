@@ -1,39 +1,31 @@
 import { EditorView, Tooltip, showTooltip } from '@codemirror/view';
 import { StateField, EditorState } from '@codemirror/state';
-import { getIssueTypeClassName } from '../helpers';
+import { categoryCssClass } from '../helpers';
 import { setIcon } from 'obsidian';
 import LanguageToolPlugin from 'src';
-import { UnderlineEffect, clearUnderlinesInRange, underlineField, ignoreUnderline } from './underlineStateField';
+import { clearUnderlinesInRange, underlineField, ignoreUnderline } from './underlineStateField';
+import { LTMatch } from "src/api";
 
-function constructTooltip(plugin: LanguageToolPlugin, view: EditorView, underline: UnderlineEffect) {
-	const message = underline.message;
-	const title = underline.title;
-	const buttons = underline.replacements.filter(v => v.trim()).slice(0, 3);
+function constructTooltip(plugin: LanguageToolPlugin, view: EditorView, underline: LTMatch): HTMLDivElement {
+	const buttons = underline.replacements.filter(v => v.trim()).slice(0, 5);
 	const category = underline.categoryId;
 	const ruleId = underline.ruleId;
 
 	const mainClass = plugin.settings.glassBg ? 'lt-predictions-container-glass' : 'lt-predictions-container';
 
-	return createDiv({ cls: [mainClass, getIssueTypeClassName(category)] }, root => {
-		if (title) {
+	return createDiv({ cls: [mainClass, categoryCssClass(category)] }, root => {
+		if (underline.title) {
 			root.createSpan({ cls: 'lt-title' }, span => {
-				span.createSpan({ text: title });
+				span.createSpan({ text: underline.title });
 			});
 		}
 
-		if (message) {
-			root.createSpan({ cls: 'lt-message', text: message });
+		if (underline.message) {
+			root.createSpan({ cls: 'lt-message', text: underline.message });
 		}
 
-		const clearUnderlineEffect = clearUnderlinesInRange.of({
-			from: underline.from,
-			to: underline.to,
-		});
-
-		const ignoreUnderlineEffect = ignoreUnderline.of({
-			from: underline.from,
-			to: underline.to,
-		});
+		const clearUnderlineEffect = clearUnderlinesInRange.of({ ...underline });
+		const ignoreUnderlineEffect = ignoreUnderline.of({ ...underline });
 
 		root.createDiv({ cls: 'lt-bottom' }, bottom => {
 			if (buttons.length) {
@@ -136,10 +128,10 @@ function getTooltip(tooltips: readonly Tooltip[], plugin: LanguageToolPlugin, st
 		return [];
 	}
 
-	let primaryUnderline: UnderlineEffect | null = null;
+	let primaryUnderline: LTMatch | null = null;
 
 	underlines.between(state.selection.main.from, state.selection.main.to, (from, to, value) => {
-		primaryUnderline = { ...value.spec.underline as UnderlineEffect, from, to };
+		primaryUnderline = { ...value.spec.underline as LTMatch, from, to };
 	});
 
 	if (primaryUnderline != null) {
@@ -162,7 +154,7 @@ function getTooltip(tooltips: readonly Tooltip[], plugin: LanguageToolPlugin, st
 				arrow: false,
 				create: view => {
 					return {
-						dom: constructTooltip(plugin, view, primaryUnderline as UnderlineEffect),
+						dom: constructTooltip(plugin, view, primaryUnderline as LTMatch),
 					};
 				},
 			},
@@ -172,7 +164,7 @@ function getTooltip(tooltips: readonly Tooltip[], plugin: LanguageToolPlugin, st
 	return [];
 }
 
-export function buildTooltipField(plugin: LanguageToolPlugin) {
+export function buildTooltipField(plugin: LanguageToolPlugin): StateField<readonly Tooltip[]> {
 	return StateField.define<readonly Tooltip[]>({
 		create: state => getTooltip([], plugin, state),
 		update: (tooltips, tr) => getTooltip(tooltips, plugin, tr.state),

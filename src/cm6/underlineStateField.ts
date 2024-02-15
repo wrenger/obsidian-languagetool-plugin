@@ -2,51 +2,28 @@ import { EditorView, Decoration, DecorationSet } from '@codemirror/view';
 import { StateField, StateEffect } from '@codemirror/state';
 import { syntaxTree, tokenClassNodeProp } from '@codemirror/language';
 import { Tree } from '@lezer/common';
-import { getIssueTypeClassName, ignoreListRegEx } from '../helpers';
+import { categoryCssClass } from '../helpers';
+import { LTMatch } from "src/api";
 
-export interface UnderlineEffect {
+export const ignoreListRegEx = /frontmatter|code|math|templater|blockid|hashtag|internal/;
+
+export interface Range {
 	from: number;
 	to: number;
-	title: string;
-	message: string;
-	replacements: string[];
-	categoryId: string;
-	ruleId: string;
-}
+};
 
-export const addUnderline = StateEffect.define<UnderlineEffect>();
+export const addUnderline = StateEffect.define<LTMatch>();
 export const clearUnderlines = StateEffect.define();
-export const clearUnderlinesInRange = StateEffect.define<{
-	from: number;
-	to: number;
-}>();
-export const ignoreUnderline = StateEffect.define<{
-	from: number;
-	to: number;
-}>();
+export const clearUnderlinesInRange = StateEffect.define<Range>();
+export const ignoreUnderline = StateEffect.define<Range>();
 
-function filterUnderlines(decorationStart: number, decorationEnd: number, rangeStart: number, rangeEnd: number) {
-	// Decoration begins in defined range
-	if (decorationStart >= rangeStart && decorationStart <= rangeEnd) {
-		return false;
-	}
-
-	// Decoration ends in defined range
-	if (decorationEnd >= rangeStart && decorationEnd <= rangeEnd) {
-		return false;
-	}
-
-	// Defined range begins within decoration
-	if (rangeStart >= decorationStart && rangeStart <= decorationEnd) {
-		return false;
-	}
-
-	// Defined range ends within decoration
-	if (rangeEnd >= decorationStart && rangeEnd <= decorationEnd) {
-		return false;
-	}
-
-	return true;
+function rangeOverlapping(first: Range, second: Range): boolean {
+	return (
+		first.from <= second.from && second.from <= first.to ||
+		first.from <= second.to && second.to <= first.to ||
+		second.from <= first.from && first.from <= second.to ||
+		second.from <= first.to && first.to <= second.to
+	);
 }
 
 export const ignoredUnderlineField = StateField.define<{
@@ -77,13 +54,11 @@ export const ignoredUnderlineField = StateField.define<{
 		if (tr.docChanged && tr.selection && state.marks.size) {
 			state.marks = state.marks.update({
 				filter: (from, to) => {
-					const shouldKeepRange = filterUnderlines(from, to, tr.selection!.main.from, tr.selection!.main.to);
-
-					if (!shouldKeepRange) {
+					const overlapping = rangeOverlapping({ from, to }, tr.selection!.main);
+					if (overlapping) {
 						state.ignoredRanges.delete(`${from},${to}`);
 					}
-
-					return shouldKeepRange;
+					return !overlapping;
 				},
 			});
 		}
@@ -137,7 +112,7 @@ export const underlineField = StateField.define<DecorationSet>({
 		};
 
 		// Ignore certain rules in special cases
-		const isRuleAllowed = (underline: UnderlineEffect) => {
+		const isRuleAllowed = (underline: LTMatch) => {
 			// Don't show spelling errors for entries in the user dictionary
 			if (underline.categoryId === 'TYPOS') {
 				const spellcheckDictionary: string[] = ((window as any).app.vault as any).getConfig('spellcheckDictionary');
@@ -165,9 +140,7 @@ export const underlineField = StateField.define<DecorationSet>({
 		// Clear out any decorations when their contents are edited
 		if (tr.docChanged && tr.selection && underlines.size) {
 			underlines = underlines.update({
-				filter: (from, to) => {
-					return filterUnderlines(from, to, tr.selection!.main.from, tr.selection!.main.to);
-				},
+				filter: (from, to) => !rangeOverlapping({ from, to }, tr.selection!.main),
 			});
 		}
 
@@ -187,7 +160,7 @@ export const underlineField = StateField.define<DecorationSet>({
 					underlines = underlines.update({
 						add: [
 							Decoration.mark({
-								class: `lt-underline ${getIssueTypeClassName(underline.categoryId)}`,
+								class: `lt-underline ${categoryCssClass(underline.categoryId)}`,
 								underline,
 							}).range(underline.from, underline.to),
 						],
@@ -197,7 +170,7 @@ export const underlineField = StateField.define<DecorationSet>({
 				underlines = Decoration.none;
 			} else if (e.is(clearUnderlinesInRange) || e.is(ignoreUnderline)) {
 				underlines = underlines.update({
-					filter: (from, to) => filterUnderlines(from, to, e.value.from, e.value.to),
+					filter: (from, to) => !rangeOverlapping({ from, to }, e.value),
 				});
 			}
 		}
