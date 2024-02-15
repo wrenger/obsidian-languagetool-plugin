@@ -32,6 +32,8 @@ export interface LanguageToolPluginSettings {
 	username?: string;
 	staticLanguage?: string;
 
+	synonyms: boolean;
+
 	englishVeriety?: undefined | 'en-US' | 'en-GB' | 'en-CA' | 'en-AU' | 'en-ZA' | 'en-NZ';
 	germanVeriety?: undefined | 'de-DE' | 'de-AT' | 'de-CH';
 	portugueseVeriety?: undefined | 'pt-BR' | 'pt-PT' | 'pt-AO' | 'pt-MZ';
@@ -51,6 +53,8 @@ export const DEFAULT_SETTINGS: LanguageToolPluginSettings = {
 	glassBg: false,
 	shouldAutoCheck: false,
 	autoCheckDelay: MinStandardAutoCheckDelay,
+
+	synonyms: true,
 
 	pickyMode: false,
 };
@@ -295,6 +299,15 @@ export class LanguageToolSettingsTab extends PluginSettingTab {
 						});
 					})
 					.catch(console.error);
+			});
+		new Setting(containerEl)
+			.setName('Find Synonyms')
+			.setDesc('Enables the context menu for synonyms fetched from https://qb-grammar-en.languagetool.org/phrasal-paraphraser/subscribe')
+			.addToggle(component => {
+				component.setValue(this.plugin.settings.synonyms).onChange(async value => {
+					this.plugin.settings.synonyms = value;
+					await this.plugin.saveSettings();
+				});
 			});
 
 		containerEl.createEl('h3', { text: 'Language Varieties' });

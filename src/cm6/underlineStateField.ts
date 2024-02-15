@@ -3,12 +3,15 @@ import { StateField, StateEffect } from '@codemirror/state';
 import { syntaxTree, tokenClassNodeProp } from '@codemirror/language';
 import { Tree } from '@lezer/common';
 import { getIssueTypeClassName, ignoreListRegEx } from '../helpers';
-import { MatchesEntity } from '../LanguageToolTypings';
 
 export interface UnderlineEffect {
 	from: number;
 	to: number;
-	match: MatchesEntity;
+	title: string;
+	message: string;
+	replacements: string[];
+	categoryId: string;
+	ruleId: string;
 }
 
 export const addUnderline = StateEffect.define<UnderlineEffect>();
@@ -134,11 +137,11 @@ export const underlineField = StateField.define<DecorationSet>({
 		};
 
 		// Ignore certain rules in special cases
-		const isRuleAllowed = (match: MatchesEntity, from: number, to: number) => {
+		const isRuleAllowed = (underline: UnderlineEffect) => {
 			// Don't show spelling errors for entries in the user dictionary
-			if (match.rule.category.id === 'TYPOS') {
+			if (underline.categoryId === 'TYPOS') {
 				const spellcheckDictionary: string[] = ((window as any).app.vault as any).getConfig('spellcheckDictionary');
-				const str = tr.state.sliceDoc(from, to);
+				const str = tr.state.sliceDoc(underline.from, underline.to);
 
 				if (spellcheckDictionary && spellcheckDictionary.includes(str)) {
 					return false;
@@ -148,10 +151,10 @@ export const underlineField = StateField.define<DecorationSet>({
 			// Don't display whitespace rules in tables
 			if (!tree) tree = syntaxTree(tr.state);
 
-			const lineNodeProp = tree.resolve(tr.newDoc.lineAt(from).from, 1).type.prop(tokenClassNodeProp);
+			const lineNodeProp = tree.resolve(tr.newDoc.lineAt(underline.from).from, 1).type.prop(tokenClassNodeProp);
 
 			if (lineNodeProp?.includes('table')) {
-				if (match.rule.id === 'WHITESPACE_RULE') {
+				if (underline.ruleId === 'WHITESPACE_RULE') {
 					return false;
 				}
 			}
@@ -170,23 +173,23 @@ export const underlineField = StateField.define<DecorationSet>({
 
 		for (const e of tr.effects) {
 			if (e.is(addUnderline)) {
-				const { from, to, match } = e.value;
-				const key = `${from},${to}`;
+				const underline = e.value;
+				const key = `${underline.from},${underline.to}`;
 
 				if (
 					!ignoredRanges.has(key) &&
 					!seenRanges.has(key) &&
-					canDecorate(from) &&
-					canDecorate(to) &&
-					isRuleAllowed(match, from, to)
+					canDecorate(underline.from) &&
+					canDecorate(underline.to) &&
+					isRuleAllowed(underline)
 				) {
 					seenRanges.add(key);
 					underlines = underlines.update({
 						add: [
 							Decoration.mark({
-								class: `lt-underline ${getIssueTypeClassName(match.rule.category.id)}`,
-								match,
-							}).range(from, to),
+								class: `lt-underline ${getIssueTypeClassName(underline.categoryId)}`,
+								underline,
+							}).range(underline.from, underline.to),
 						],
 					});
 				}

@@ -5,7 +5,7 @@ import QuickLRU from 'quick-lru';
 import { DEFAULT_SETTINGS, LanguageToolPluginSettings, LanguageToolSettingsTab } from './SettingsTab';
 import { LanguageToolApi } from './LanguageToolTypings';
 import { hashString } from './helpers';
-import { getDetectionResult } from './api';
+import { getDetectionResult, synonyms } from './api';
 import { buildUnderlineExtension } from './cm6/underlineExtension';
 import { addUnderline, clearUnderlines, clearUnderlinesInRange, underlineField } from './cm6/underlineStateField';
 
@@ -70,6 +70,8 @@ export default class LanguageToolPlugin extends Plugin {
 
 		// Commands
 		this.registerCommands();
+
+		this.registerMenuItems();
 	}
 
 	public onunload() {
@@ -158,7 +160,7 @@ export default class LanguageToolPlugin extends Plugin {
 
 				// Check that there is exactly one match that has a replacement in the slot that is called.
 				const preconditionsSuccessfull =
-					relevantMatches.length === 1 && relevantMatches[0]?.value?.spec?.match?.replacements?.length >= n;
+					relevantMatches.length === 1 && relevantMatches[0]?.value?.spec?.underline?.replacements?.length >= n;
 
 				if (checking) return preconditionsSuccessfull;
 
@@ -172,7 +174,7 @@ export default class LanguageToolPlugin extends Plugin {
 				const change = {
 					from,
 					to,
-					insert: value.spec.match.replacements[n - 1].value,
+					insert: value.spec.underline.replacements[n - 1],
 				};
 
 				// Insert the text of the match
@@ -182,6 +184,53 @@ export default class LanguageToolPlugin extends Plugin {
 				});
 			},
 		};
+	}
+
+	private registerMenuItems() {
+		this.app.workspace.on('editor-menu', (menu, editor, view) => {
+			if (!this.settings.synonyms) return;
+
+			let cm = (editor as any).cm as EditorView;
+			let selection = cm.state.selection.main;
+			if (selection.empty) return;
+
+			let word = cm.state.sliceDoc(cm.state.selection.main.from, cm.state.selection.main.to);
+			if (word.match(/[\s\.]/)) return;
+
+			menu.addItem(item => {
+				item.setTitle('Synonyms');
+				item.setIcon('square-stack');
+				item.onClick(() => {
+					let line = cm.state.doc.lineAt(selection.from);
+
+					let prefix = line.text.slice(0, selection.from - line.from).lastIndexOf('.') + 1;
+					let sentence_raw = line.text.slice(prefix);
+					let sentence = sentence_raw.trimLeft();
+					let offset = line.from + prefix + sentence_raw.length - sentence.length;
+					let sel = { from: selection.from - offset, to: selection.to - offset };
+
+					sentence = sentence.trimRight();
+					let suffix = sentence.indexOf('.');
+					if (suffix !== -1) sentence = sentence.slice(0, suffix + 1);
+
+					synonyms(sentence, sel).then(synonyms => {
+						cm.dispatch({
+							effects: [
+								addUnderline.of({
+									from: selection.from,
+									to: selection.to,
+									title: 'Synonyms',
+									message: '',
+									categoryId: 'SYNONYMS',
+									ruleId: 'SYNONYMS',
+									replacements: synonyms,
+								})
+							]
+						});
+					});
+				});
+			});
+		})
 	}
 
 	public setStatusBarReady() {
@@ -312,7 +361,11 @@ export default class LanguageToolPlugin extends Plugin {
 					addUnderline.of({
 						from: start,
 						to: end,
-						match,
+						title: match.shortMessage,
+						message: match.message,
+						categoryId: match.rule.category.id,
+						ruleId: match.rule.id,
+						replacements: match.replacements?.map(r => r.value) ?? [],
 					}),
 				);
 			}

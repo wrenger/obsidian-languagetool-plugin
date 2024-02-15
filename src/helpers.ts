@@ -21,6 +21,7 @@ export function getIssueTypeClassName(categoryId: string) {
 		case 'COLLOQUIALISMS':
 		case 'REDUNDANCY':
 		case 'STYLE':
+		case 'SYNONYMS':
 			return 'lt-style';
 		case 'PUNCTUATION':
 		case 'TYPOS':

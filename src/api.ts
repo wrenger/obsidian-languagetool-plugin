@@ -59,27 +59,19 @@ export async function getDetectionResult(
 	}
 
 	if (settings.englishVeriety) {
-		params.preferredVariants = `${params.preferredVariants ? `${params.preferredVariants},` : ''}${
-			settings.englishVeriety
-		}`;
+		params.preferredVariants = `${params.preferredVariants ? `${params.preferredVariants},` : ''}${settings.englishVeriety}`;
 	}
 
 	if (settings.germanVeriety) {
-		params.preferredVariants = `${params.preferredVariants ? `${params.preferredVariants},` : ''}${
-			settings.germanVeriety
-		}`;
+		params.preferredVariants = `${params.preferredVariants ? `${params.preferredVariants},` : ''}${settings.germanVeriety}`;
 	}
 
 	if (settings.portugueseVeriety) {
-		params.preferredVariants = `${params.preferredVariants ? `${params.preferredVariants},` : ''}${
-			settings.portugueseVeriety
-		}`;
+		params.preferredVariants = `${params.preferredVariants ? `${params.preferredVariants},` : ''}${settings.portugueseVeriety}`;
 	}
 
 	if (settings.catalanVeriety) {
-		params.preferredVariants = `${params.preferredVariants ? `${params.preferredVariants},` : ''}${
-			settings.catalanVeriety
-		}`;
+		params.preferredVariants = `${params.preferredVariants ? `${params.preferredVariants},` : ''}${settings.catalanVeriety}`;
 	}
 
 	if (settings.apikey && settings.username && settings.apikey.length > 1 && settings.username.length > 1) {
@@ -163,4 +155,57 @@ export async function pushLogs(res: Response, settings: LanguageToolPluginSettin
 	if (logs.length > 10) {
 		logs.shift();
 	}
+}
+
+export async function synonyms(sentence: string, selection: { from: number; to: number }): Promise<string[]> {
+	const URL = "https://qb-grammar-en.languagetool.org/phrasal-paraphraser/subscribe";
+
+	let index = sentence.slice(0, selection.from).split(/\s+/).length;
+	let word = sentence.slice(selection.from, selection.to);
+
+	let request = {
+		message: {
+			indices: [index],
+			mode: 0,
+			phrases: [word],
+			text: sentence
+		},
+		meta: {
+			clientStatus: "string",
+			product: "string",
+			traceID: "string",
+			userID: "string",
+		},
+		response_queue: "string"
+	};
+
+	let res: Response;
+	try {
+		res = await fetch(URL, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify(request)
+		});
+	} catch (e) {
+		return Promise.reject(e);
+	}
+	if (!res.ok) {
+		return Promise.reject(new Error(`unexpected status ${res.status}`));
+	}
+
+	let body: any;
+	try {
+		body = await res.json();
+	} catch (e) {
+		return Promise.reject(e);
+	}
+	if (body.message !== "OK"
+		|| body.data == undefined
+		|| !(body.data.suggestions instanceof Object)
+		|| !(body.data.suggestions[word] instanceof Array)) {
+		return Promise.reject(new Error("Invalid response from server"));
+	}
+	return body.data.suggestions[word] as string[];
 }

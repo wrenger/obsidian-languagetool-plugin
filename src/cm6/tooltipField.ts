@@ -6,15 +6,11 @@ import LanguageToolPlugin from 'src';
 import { UnderlineEffect, clearUnderlinesInRange, underlineField, ignoreUnderline } from './underlineStateField';
 
 function constructTooltip(plugin: LanguageToolPlugin, view: EditorView, underline: UnderlineEffect) {
-	const match = underline.match;
-	const message = match.message;
-	const title = match.shortMessage;
-	const buttons = (match.replacements || [])
-		.slice(0, 3)
-		.map(v => v.value)
-		.filter(v => v.trim());
-	const category = match.rule.category.id;
-	const ruleId = match.rule.id;
+	const message = underline.message;
+	const title = underline.title;
+	const buttons = underline.replacements.filter(v => v.trim()).slice(0, 3);
+	const category = underline.categoryId;
+	const ruleId = underline.ruleId;
 
 	const mainClass = plugin.settings.glassBg ? 'lt-predictions-container-glass' : 'lt-predictions-container';
 
@@ -113,7 +109,7 @@ function constructTooltip(plugin: LanguageToolPlugin, view: EditorView, underlin
 					};
 				}
 			});
-			if (category !== 'TYPOS') {
+			if (category !== 'TYPOS' && category !== 'SYNONYMS') {
 				container.createEl('button', { cls: 'lt-ignore-btn' }, button => {
 					setIcon(button.createSpan(), 'circle-off');
 					button.createSpan({ text: 'Disable rule' });
@@ -143,15 +139,11 @@ function getTooltip(tooltips: readonly Tooltip[], plugin: LanguageToolPlugin, st
 	let primaryUnderline: UnderlineEffect | null = null;
 
 	underlines.between(state.selection.main.from, state.selection.main.to, (from, to, value) => {
-		primaryUnderline = {
-			from,
-			to,
-			match: value.spec.match,
-		} as UnderlineEffect;
+		primaryUnderline = { ...value.spec.underline as UnderlineEffect, from, to };
 	});
 
-	if (primaryUnderline !== null) {
-		const { from, to } = primaryUnderline as UnderlineEffect;
+	if (primaryUnderline != null) {
+		const { from, to } = primaryUnderline;
 
 		if (tooltips.length) {
 			const tooltip = tooltips[0];
