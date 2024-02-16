@@ -1,12 +1,12 @@
 import { Command, MarkdownView, Menu, Notice, Plugin, setIcon } from 'obsidian';
 import { Decoration, EditorView } from '@codemirror/view';
-import { StateEffect } from '@codemirror/state';
+import { EditorSelection, SelectionRange, StateEffect } from '@codemirror/state';
 import QuickLRU from 'quick-lru';
 import { DEFAULT_SETTINGS, LTSettings, LTSettingsTab } from './settingsTab';
 import { hashString } from './helpers';
 import { LTMatch, getDetectionResult, synonyms } from './api';
 import { buildUnderlineExtension } from './cm6/underlineExtension';
-import { addUnderline, clearUnderlines, clearUnderlinesInRange, underlineField } from './cm6/underlineStateField';
+import { LTRange, addUnderline, clearUnderlines, clearUnderlinesInRange, underlineField } from './cm6/underlineStateField';
 
 export default class LanguageToolPlugin extends Plugin {
 	public settings: LTSettings;
@@ -82,7 +82,7 @@ export default class LanguageToolPlugin extends Plugin {
 			id: 'ltcheck-text',
 			name: 'Check Text',
 			editorCallback: (editor, view) => {
-				this.runDetection((editor as any).cm as EditorView, view).catch(e => {
+				this.runDetection((editor as any).cm as EditorView).catch(e => {
 					console.error(e);
 				});
 			},
@@ -259,15 +259,15 @@ export default class LanguageToolPlugin extends Plugin {
 		const statusBarRect = this.statusBarText.parentElement?.getBoundingClientRect();
 		const statusBarIconRect = this.statusBarText.getBoundingClientRect();
 
-		new Menu(this.app)
+		new Menu()
 			.addItem(item => {
 				item.setTitle('Check current document');
 				item.setIcon('checkbox-glyph');
 				item.onClick(async () => {
-					const activeLeaf = this.app.workspace.activeLeaf;
-					if (activeLeaf?.view instanceof MarkdownView && activeLeaf.view.getMode() === 'source') {
+					const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+					if (view && view.getMode() === 'source') {
 						try {
-							await this.runDetection((activeLeaf.view.editor as any).cm, activeLeaf.view);
+							await this.runDetection((view.editor as any).cm);
 						} catch (e) {
 							console.error(e);
 						}
@@ -301,30 +301,16 @@ export default class LanguageToolPlugin extends Plugin {
 			});
 	};
 
-	public async runDetection(editor: EditorView, view: MarkdownView, from?: number, to?: number): Promise<void> {
+	public async runDetection(editor: EditorView, range?: LTRange): Promise<void> {
 		this.setStatusBarWorking();
 
 		const selection = editor.state.selection.main;
-
-		let text = view.data;
-		let offset = 0;
-		let isRange = false;
-		let rangeFrom = 0;
-		let rangeTo = 0;
-
-		if (from === undefined && selection && selection.from !== selection.to) {
-			from = selection.from;
-			to = selection.to;
+		if (!range && !selection.empty) {
+			range = { ...selection };
 		}
 
-		if (from !== undefined && to !== undefined) {
-			text = editor.state.sliceDoc(from, to);
-			offset = from;
-			rangeFrom = from;
-			rangeTo = to;
-			isRange = true;
-		}
-
+		const offset = range ? range.from : 0;
+		const text = range ? editor.state.sliceDoc(range.from, range.to) : editor.state.sliceDoc(0);
 		const hash = hashString(text);
 
 		let matches: LTMatch[];
@@ -332,7 +318,7 @@ export default class LanguageToolPlugin extends Plugin {
 			matches = this.hashLru.get(hash)!;
 		} else {
 			try {
-				matches = await getDetectionResult(text, () => this.settings);
+				matches = await getDetectionResult(offset, text, () => this.settings);
 				this.hashLru.set(hash, matches);
 			} catch (e) {
 				this.setStatusBarReady();
@@ -342,13 +328,8 @@ export default class LanguageToolPlugin extends Plugin {
 
 		const effects: StateEffect<any>[] = [];
 
-		if (isRange) {
-			effects.push(
-				clearUnderlinesInRange.of({
-					from: rangeFrom,
-					to: rangeTo,
-				}),
-			);
+		if (range) {
+			effects.push(clearUnderlinesInRange.of(range));
 		} else {
 			effects.push(clearUnderlines.of(null));
 		}

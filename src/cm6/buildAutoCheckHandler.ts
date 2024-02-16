@@ -1,6 +1,5 @@
 import { Extension } from "@codemirror/state";
 import { EditorView } from '@codemirror/view';
-import { editorViewField } from 'obsidian';
 import LanguageToolPlugin from 'src';
 
 export function buildAutoCheckHandler(plugin: LanguageToolPlugin): Extension {
@@ -8,29 +7,27 @@ export function buildAutoCheckHandler(plugin: LanguageToolPlugin): Extension {
 	let minRange = Infinity;
 	let maxRange = -Infinity;
 
-	return EditorView.inputHandler.of((view, from, to, text) => {
-		if (!plugin.settings.shouldAutoCheck || !text.trim()) {
-			return false;
-		}
+	return EditorView.updateListener.of((update) => {
+		if (!update.docChanged || !plugin.settings.shouldAutoCheck) return;
 
-		// @ts-ignore
-		const markdownView = view.state.field(editorViewField);
-		if (!markdownView) return false;
-
-		minRange = Math.min(minRange, from, to);
-		maxRange = Math.max(maxRange, from, to);
+		update.changes.iterChangedRanges((fromA, toA, fromB, toB) => {
+			minRange = Math.min(minRange, fromB, toB);
+			maxRange = Math.max(maxRange, fromB, toB);
+		})
 
 		clearTimeout(debounceTimer);
 
+		const view = update.view;
 		debounceTimer = window.setTimeout(() => {
 			const startLine = view.lineBlockAt(minRange);
 			const endLine = view.lineBlockAt(maxRange);
 
-			plugin.runDetection(view, markdownView, startLine.from, endLine.to).catch(e => {
+			plugin.runDetection(view, {from: startLine.from, to: endLine.to}).catch(e => {
 				console.error(e);
 			});
-		}, plugin.settings.autoCheckDelay);
 
-		return false;
+			minRange = Infinity;
+			maxRange = -Infinity;
+		}, plugin.settings.autoCheckDelay);
 	});
 }

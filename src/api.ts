@@ -53,6 +53,7 @@ export const logs: string[] = [];
 let lastStatus: 'ok' | 'request-failed' | 'request-not-ok' | 'json-parse-error' = 'ok';
 
 export async function getDetectionResult(
+	offset: number,
 	text: string,
 	getSettings: () => LTSettings,
 ): Promise<LTMatch[]> {
@@ -73,7 +74,6 @@ export async function getDetectionResult(
 			return linebreaks;
 		},
 	});
-	console.log(parsedText);
 
 	const settings = getSettings();
 
@@ -180,8 +180,8 @@ export async function getDetectionResult(
 
 	return body.matches?.map(match => {
 		return {
-			from: match.offset,
-			to: match.offset + match.length,
+			from: offset + match.offset,
+			to: offset + match.offset + match.length,
 			title: match.shortMessage,
 			message: match.message,
 			replacements: match.replacements?.map(r => r.value) ?? [],

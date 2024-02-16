@@ -7,17 +7,17 @@ import { LTMatch } from "src/api";
 
 export const ignoreListRegEx = /frontmatter|code|math|templater|blockid|hashtag|internal/;
 
-export interface Range {
+export interface LTRange {
 	from: number;
 	to: number;
 };
 
 export const addUnderline = StateEffect.define<LTMatch>();
 export const clearUnderlines = StateEffect.define();
-export const clearUnderlinesInRange = StateEffect.define<Range>();
-export const ignoreUnderline = StateEffect.define<Range>();
+export const clearUnderlinesInRange = StateEffect.define<LTRange>();
+export const ignoreUnderline = StateEffect.define<LTRange>();
 
-function rangeOverlapping(first: Range, second: Range): boolean {
+function rangeOverlapping(first: LTRange, second: LTRange): boolean {
 	return (
 		first.from <= second.from && second.from <= first.to ||
 		first.from <= second.to && second.to <= first.to ||
@@ -83,14 +83,14 @@ export const underlineField = StateField.define<DecorationSet>({
 		return Decoration.none;
 	},
 	update(underlines, tr) {
+		underlines = underlines.map(tr.changes);
+
 		const { ignoredRanges } = tr.state.field(ignoredUnderlineField);
 		const seenRanges = new Set<string>();
 
 		// Memoize any positions we check so we can avoid some work
 		const seenPositions: Record<number, boolean> = {};
 		let tree: Tree | null = null;
-
-		underlines = underlines.map(tr.changes);
 
 		// Prevent decorations in codeblocks, etc...
 		const canDecorate = (pos: number) => {
