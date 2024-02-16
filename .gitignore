@@ -2,3 +2,4 @@ node_modules/
 main.js
 .hotreload
 data.json
+.vscode/

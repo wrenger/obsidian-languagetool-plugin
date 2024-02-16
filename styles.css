@@ -1,37 +1,39 @@
+:root {
+  --lt-minor: #e9b35f;
+  --lt-major: #da615c;
+  --lt-style: #8981f3;
+}
+
 .lt-underline {
   cursor: pointer;
   transition: background-color 100ms ease-out;
 }
 
 .lt-underline.lt-minor {
-  box-shadow: inset 0 -2px #e9b35f;
+  text-decoration: wavy underline var(--lt-minor);
+}
+.lt-underline.lt-minor:hover {
+  background-color: color-mix(in srgb, var(--lt-minor), transparent 80%);
 }
 
 .lt-underline.lt-major {
-  box-shadow: inset 0 -2px #da615c;
+  text-decoration: wavy underline var(--lt-major);
+}
+.lt-underline.lt-major:hover {
+  background-color: color-mix(in srgb, var(--lt-major), transparent 80%);
 }
 
 .lt-underline.lt-style {
-  box-shadow: inset 0 -2px #8981f3;
+  text-decoration: wavy underline var(--lt-style);
 }
-
-.lt-underline.lt-minor:hover {
-  background-color: #e9b35f21;
-}
-
-.lt-underline.lt-major:hover {
-  background-color: #da615c21;
-}
-
 .lt-underline.lt-style:hover {
-  background-color: #8981f321;
+  background-color: color-mix(in srgb, var(--lt-style), transparent 80%);
 }
 
 @keyframes lineInserted {
   from {
     opacity: 0;
   }
-
   to {
     opacity: 1;
   }
@@ -71,8 +73,6 @@
 }
 
 .lt-buttoncontainer > button {
-  border: 1px solid var(--background-modifier-border);
-  font-size: 1rem;
   margin-right: 4px;
   margin-bottom: 4px;
   padding: 4px 10px;
@@ -92,7 +92,7 @@
 
 .lt-bottom {
   min-height: 10px;
-  padding-left: 12px;
+  padding: 0 12px;
   position: relative;
 }
 
@@ -175,15 +175,13 @@
 }
 
 .lt-minor .lt-title > span {
-  box-shadow: inset 0 -2px #e9b35f88;
+  text-decoration: underline 2px var(--lt-minor);
 }
-
 .lt-major .lt-title > span {
-  box-shadow: inset 0 -2px #da615c88;
+  text-decoration: underline 2px var(--lt-major);
 }
-
 .lt-style .lt-title > span {
-  box-shadow: inset 0 -2px #8981f388;
+  text-decoration: underline 2px var(--lt-style);
 }
 
 .lt-loading > svg {
@@ -197,7 +195,6 @@
   from {
     transform: rotate(0deg);
   }
-
   to {
     transform: rotate(360deg);
   }
