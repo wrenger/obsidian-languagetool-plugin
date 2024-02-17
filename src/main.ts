@@ -1,6 +1,6 @@
 import { Command, MarkdownView, Menu, Notice, Plugin, setIcon } from 'obsidian';
 import { Decoration, EditorView } from '@codemirror/view';
-import { EditorSelection, SelectionRange, StateEffect } from '@codemirror/state';
+import { StateEffect } from '@codemirror/state';
 import QuickLRU from 'quick-lru';
 import { DEFAULT_SETTINGS, LTSettings, LTSettingsTab } from './settingsTab';
 import { hashString } from './helpers';

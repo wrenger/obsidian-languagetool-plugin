@@ -42,4 +42,4 @@ Configure your email, API key, and the new URL (https://api.languagetoolplus.com
 
 # Demo
 
-![demo-02022022](https://user-images.githubusercontent.com/98941594/152318322-83abb30d-fee0-44cf-9700-262f4c0de4c4.png)
+![demo-02022022](demos/Demo1.png)

@@ -8,7 +8,7 @@ import {
 	SliderComponent,
 	TextComponent,
 } from 'obsidian';
-import LanguageToolPlugin from '.';
+import LanguageToolPlugin from './main';
 import { logs } from './api';
 
 const secsPerMin = 60;

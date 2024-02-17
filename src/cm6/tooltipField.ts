@@ -2,7 +2,7 @@ import { EditorView, Tooltip, showTooltip } from '@codemirror/view';
 import { StateField, EditorState } from '@codemirror/state';
 import { categoryCssClass } from '../helpers';
 import { setIcon } from 'obsidian';
-import LanguageToolPlugin from 'src';
+import LanguageToolPlugin from 'src/main';
 import { clearUnderlinesInRange, underlineField, ignoreUnderline } from './underlineStateField';
 import { LTMatch } from "src/api";
 
