@@ -1,6 +1,5 @@
 import * as Remark from 'annotatedtext-remark';
 import { Notice } from 'obsidian';
-import { getRuleCategories } from './helpers';
 import { LTSettings } from './settingsTab';
 
 /** A typo or grammar issue detected by LanguageTool */
@@ -77,54 +76,49 @@ export async function getDetectionResult(
 
 	const settings = getSettings();
 
-	const { enabledCategories, disabledCategories } = getRuleCategories(settings);
-
-	const params: { [key: string]: string } = {
+	const params: { [key: string]: string | boolean } = {
 		data: JSON.stringify(parsedText),
-		language: 'auto',
-		enabledOnly: 'false',
+		language: settings.staticLanguage ?? 'auto',
+		enabledOnly: false,
 		level: settings.pickyMode ? 'picky' : 'default',
 	};
 
-	if (enabledCategories.length) {
-		params.enabledCategories = enabledCategories.join(',');
+	if (settings.motherTongue) {
+		params.motherTongue = settings.motherTongue;
 	}
 
-	if (disabledCategories.length) {
-		params.disabledCategories = disabledCategories.join(',');
+	if (settings.enabledCategories) {
+		params.enabledCategories = settings.enabledCategories;
+	}
+	if (settings.disabledCategories) {
+		params.disabledCategories = settings.disabledCategories;
 	}
 
-	if (settings.ruleOtherRules) {
-		params.enabledRules = settings.ruleOtherRules;
+	if (settings.enabledRules) {
+		params.enabledRules = settings.enabledRules;
+	}
+	if (settings.disabledRules) {
+		params.disabledRules = settings.disabledRules;
 	}
 
-	if (settings.ruleOtherDisabledRules) {
-		params.disabledRules = settings.ruleOtherDisabledRules;
+	let preferredVariants = [];
+	if (settings.englishVariety) {
+		preferredVariants.push(settings.englishVariety);
 	}
-
-	if (settings.englishVeriety) {
-		params.preferredVariants = `${params.preferredVariants ? `${params.preferredVariants},` : ''}${settings.englishVeriety}`;
+	if (settings.germanVariety) {
+		preferredVariants.push(settings.germanVariety);
 	}
-
-	if (settings.germanVeriety) {
-		params.preferredVariants = `${params.preferredVariants ? `${params.preferredVariants},` : ''}${settings.germanVeriety}`;
+	if (settings.portugueseVariety) {
+		preferredVariants.push(settings.portugueseVariety);
 	}
-
-	if (settings.portugueseVeriety) {
-		params.preferredVariants = `${params.preferredVariants ? `${params.preferredVariants},` : ''}${settings.portugueseVeriety}`;
+	if (settings.catalanVariety) {
+		preferredVariants.push(settings.catalanVariety);
 	}
-
-	if (settings.catalanVeriety) {
-		params.preferredVariants = `${params.preferredVariants ? `${params.preferredVariants},` : ''}${settings.catalanVeriety}`;
-	}
+	params.preferredVariants = preferredVariants.join(',');
 
 	if (settings.apikey && settings.username) {
 		params.username = settings.username;
 		params.apiKey = settings.apikey;
-	}
-
-	if (settings.staticLanguage && settings.staticLanguage !== 'auto') {
-		params.language = settings.staticLanguage;
 	}
 
 	let res: Response;

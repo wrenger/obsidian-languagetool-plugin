@@ -1,4 +1,3 @@
-import { LTSettings } from './settingsTab';
 
 export function hashString(value: string): number {
 	let hash = 0;
@@ -27,17 +26,4 @@ export function categoryCssClass(categoryId: string): string {
 	}
 
 	return 'lt-minor';
-}
-
-// Construct a list of enabled / disabled rules
-export function getRuleCategories(settings: LTSettings): { enabledCategories: string[]; disabledCategories: string[] } {
-	const enabledCategories: string[] = settings.ruleOtherCategories ? settings.ruleOtherCategories.split(',') : [];
-	const disabledCategories: string[] = settings.ruleOtherDisabledRules
-		? settings.ruleOtherDisabledRules.split(',')
-		: [];
-
-	return {
-		enabledCategories,
-		disabledCategories,
-	};
 }

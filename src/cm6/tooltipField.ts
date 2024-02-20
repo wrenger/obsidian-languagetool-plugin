@@ -11,9 +11,7 @@ function constructTooltip(plugin: LanguageToolPlugin, view: EditorView, underlin
 	const category = underline.categoryId;
 	const ruleId = underline.ruleId;
 
-	const mainClass = plugin.settings.glassBg ? 'lt-predictions-container-glass' : 'lt-predictions-container';
-
-	return createDiv({ cls: [mainClass, categoryCssClass(category)] }, root => {
+	return createDiv({ cls: ['lt-predictions-container', categoryCssClass(category)] }, root => {
 		if (underline.title) {
 			root.createSpan({ cls: 'lt-title' }, span => {
 				span.createSpan({ text: underline.title });
@@ -106,11 +104,12 @@ function constructTooltip(plugin: LanguageToolPlugin, view: EditorView, underlin
 					setIcon(button.createSpan(), 'circle-off');
 					button.createSpan({ text: 'Disable rule' });
 					button.onclick = () => {
-						if (plugin.settings.ruleOtherDisabledRules)
-							plugin.settings.ruleOtherDisabledRules += ',' + ruleId;
-						else plugin.settings.ruleOtherDisabledRules = ruleId;
+						if (plugin.settings.disabledRules)
+							plugin.settings.disabledRules += ',' + ruleId;
+						else plugin.settings.disabledRules = ruleId;
 						plugin.saveSettings();
 
+						// FIXME: Remove other underlines of the same rule
 						view.dispatch({
 							effects: [clearUnderlineEffect],
 						});

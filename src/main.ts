@@ -1,4 +1,4 @@
-import { Command, MarkdownView, Menu, Notice, Plugin, setIcon } from 'obsidian';
+import { Command, MarkdownView, Menu, Plugin, setIcon } from 'obsidian';
 import { Decoration, EditorView } from '@codemirror/view';
 import { StateEffect } from '@codemirror/state';
 import QuickLRU from 'quick-lru';
@@ -18,39 +18,6 @@ export default class LanguageToolPlugin extends Plugin {
 	public async onload(): Promise<void> {
 		// Settings
 		await this.loadSettings();
-		let unmodifiedSettings = await this.loadData();
-		if (!unmodifiedSettings || Object.keys(unmodifiedSettings).length === 0) {
-			unmodifiedSettings = this.settings;
-		}
-		if (!unmodifiedSettings.urlMode || unmodifiedSettings.urlMode.length === 0) {
-			const { serverUrl } = this.settings;
-			this.settings.urlMode =
-				serverUrl === 'https://api.languagetool.org'
-					? 'standard'
-					: serverUrl === 'https://api.languagetoolplus.com'
-						? 'premium'
-						: 'custom';
-			try {
-				await this.saveSettings();
-				await this.loadSettings();
-				new Notice('updated LanguageTool Settings, please confirm your server URL in the settings tab', 10000);
-			} catch (e) {
-				console.error(e);
-			}
-		}
-
-		if (this.settings.serverUrl.endsWith('/v2/check')) {
-			new Notice(
-				"invalid or outdated LanguageTool Settings, I'm trying to fix it.\nIf it does not work, simply reinstall the plugin",
-				10000,
-			);
-			this.settings.serverUrl = this.settings.serverUrl.replace('/v2/check', '');
-			try {
-				await this.saveSettings();
-			} catch (e) {
-				console.error(e);
-			}
-		}
 
 		this.addSettingTab(new LTSettingsTab(this.app, this));
 

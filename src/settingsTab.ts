@@ -1,7 +1,6 @@
 import {
 	App,
 	DropdownComponent,
-	Modal,
 	Notice,
 	PluginSettingTab,
 	Setting,
@@ -11,15 +10,34 @@ import {
 import LanguageToolPlugin from './main';
 import { logs } from './api';
 
+const autoCheckDelayMax = 3000;
+const autoCheckDelayStep = 200;
 const secsPerMin = 60;
 const millis = 1000;
-const StandardMaxRequestsPerMinute = 20;
-const PremiumMaxRequestsPerMinute = 80;
 
-const MaxAutoCheckDelay = 3000;
-const AutoCheckDelayStep = 200;
-const MinStandardAutoCheckDelay = (secsPerMin / StandardMaxRequestsPerMinute) * millis;
-const MinPremiumAutoCheckDelay = (secsPerMin / PremiumMaxRequestsPerMinute) * millis;
+// See https://languagetool.org/http-api/swagger-ui
+const endpoints = {
+	standard: {
+		url: 'https://api.languagetool.org',
+		timeout: (secsPerMin / 80) * millis,
+	},
+	premium: {
+		url: 'https://api.languagetoolplus.com',
+		timeout: (secsPerMin / 20) * millis,
+	},
+	custom: {
+		url: '',
+		timeout: (secsPerMin / 20) * millis,
+	},
+};
+type Endpoint = keyof typeof endpoints;
+
+function endpointFromUrl(url: string): Endpoint {
+	for (const [key, value] of Object.entries(endpoints)) {
+		if (value.url === url) return key as Endpoint;
+	}
+	return 'custom';
+}
 
 export interface Language {
 	name: string;
@@ -27,55 +45,41 @@ export interface Language {
 	longCode: string;
 }
 
-export interface LTSettings {
-	shouldAutoCheck: boolean;
-	autoCheckDelay: number;
+export type EnglishVariety = 'en-US' | 'en-GB' | 'en-CA' | 'en-AU' | 'en-ZA' | 'en-NZ';
+export type GermanVariety = 'de-DE' | 'de-AT' | 'de-CH';
+export type PortugueseVariety = 'pt-BR' | 'pt-PT' | 'pt-AO' | 'pt-MZ';
+export type CatalanVariety = 'ca-ES' | 'ca-ES-valencia';
 
+export interface LTSettings {
 	serverUrl: string;
-	urlMode: 'standard' | 'premium' | 'custom';
-	glassBg: boolean;
 	apikey?: string;
 	username?: string;
-	staticLanguage?: string;
 
+	shouldAutoCheck: boolean;
+	autoCheckDelay: number;
 	synonyms: boolean;
 
-	englishVeriety?: undefined | 'en-US' | 'en-GB' | 'en-CA' | 'en-AU' | 'en-ZA' | 'en-NZ';
-	germanVeriety?: undefined | 'de-DE' | 'de-AT' | 'de-CH';
-	portugueseVeriety?: undefined | 'pt-BR' | 'pt-PT' | 'pt-AO' | 'pt-MZ';
-	catalanVeriety?: undefined | 'ca-ES' | 'ca-ES-valencia';
+	motherTongue?: string;
+	staticLanguage?: string;
+	englishVariety?: EnglishVariety;
+	germanVariety?: GermanVariety;
+	portugueseVariety?: PortugueseVariety;
+	catalanVariety?: CatalanVariety;
 
 	pickyMode: boolean;
-
-	ruleOtherCategories?: string;
-	ruleOtherRules?: string;
-	ruleOtherDisabledRules?: string;
+	enabledCategories?: string;
+	disabledCategories?: string;
+	enabledRules?: string;
+	disabledRules?: string;
 }
 
 export const DEFAULT_SETTINGS: LTSettings = {
-	serverUrl: 'https://api.languagetool.org',
-	urlMode: 'standard',
-
-	glassBg: false,
+	serverUrl: Object.keys(endpoints)[0],
+	autoCheckDelay: endpoints.standard.timeout,
 	shouldAutoCheck: false,
-	autoCheckDelay: MinStandardAutoCheckDelay,
-
-	synonyms: true,
-
+	synonyms: false,
 	pickyMode: false,
 };
-
-function getServerUrl(value: string): string {
-	return value === 'standard'
-		? 'https://api.languagetool.org'
-		: value === 'premium'
-		? 'https://api.languagetoolplus.com'
-		: '';
-}
-
-function getMinAllowedAutoCheckDelay(value: string): number {
-	return value === 'standard' ? MinStandardAutoCheckDelay : value === 'premium' ? MinPremiumAutoCheckDelay : 0;
-}
 
 export class LTSettingsTab extends PluginSettingTab {
 	private readonly plugin: LanguageToolPlugin;
@@ -85,15 +89,14 @@ export class LTSettingsTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
-	private configureAutoCheckDelaySlider(delaySlider: SliderComponent | null, value: string) {
-		const minAllowedAutoCheckDelay = getMinAllowedAutoCheckDelay(value);
+	private configureAutoCheckDelaySlider(delaySlider: SliderComponent, value: Endpoint) {
+		const minAutoCheckDelay = endpoints[value].timeout;
 
-		if (this.plugin.settings.autoCheckDelay < minAllowedAutoCheckDelay) {
-			this.plugin.settings.autoCheckDelay = MinStandardAutoCheckDelay;
-		}
+		this.plugin.settings.autoCheckDelay = Math.clamp(
+			this.plugin.settings.autoCheckDelay, minAutoCheckDelay, autoCheckDelayMax);
 
-		delaySlider?.setDisabled(value === 'standard');
-		delaySlider?.setLimits(minAllowedAutoCheckDelay, MaxAutoCheckDelay, AutoCheckDelayStep);
+		delaySlider.setDisabled(value === 'standard');
+		delaySlider.setLimits(minAutoCheckDelay, autoCheckDelayMax, autoCheckDelayStep);
 	}
 
 	public async requestLanguages(): Promise<Language[]> {
@@ -105,39 +108,47 @@ export class LTSettingsTab extends PluginSettingTab {
 
 	public display(): void {
 		const { containerEl } = this;
-		let urlDropdown: DropdownComponent | null = null;
-		let autoCheckDelaySlider: SliderComponent | null = null;
 		containerEl.empty();
-		containerEl.createEl('h2', { text: 'Settings for LanguageTool' });
-		const copyButton = containerEl.createEl('button', { text: 'Copy failed Request Logs' });
+		containerEl.createEl('h2', { text: this.plugin.manifest.name });
+		const copyButton = containerEl.createEl('button', {
+			text: 'Copy failed Request Logs',
+			cls: "lt-settings-btn",
+		});
 		copyButton.onclick = async () => {
 			await window.navigator.clipboard.writeText(logs.join('\n'));
 			new Notice('Logs copied to clipboard');
 		};
-		copyButton.style.marginBottom = '5px';
+
+		let endpoint = endpointFromUrl(this.plugin.settings.serverUrl);
+		let autoCheckDelaySlider: SliderComponent | null = null;
 
 		new Setting(containerEl)
 			.setName('Endpoint')
-			.setDesc('Endpoint that will be used to make requests to')
+			.setDesc('Choose the LanguageTool server url')
 			.then(setting => {
-				setting.controlEl.style.display = 'inline-grid';
+				setting.controlEl.classList.add('lt-settings-grid');
+
+				let dropdown: DropdownComponent | null = null;
 				let input: TextComponent | null = null;
 				setting.addDropdown(component => {
-					urlDropdown = component;
+					dropdown = component;
 					component
 						.addOptions({
 							standard: '(Standard) api.languagetool.org',
 							premium: '(Premium) api.languagetoolplus.com',
 							custom: 'Custom URL',
 						})
-						.setValue(this.plugin.settings.urlMode)
+						.setValue(endpoint)
 						.onChange(async value => {
-							this.plugin.settings.urlMode = value as 'standard' | 'premium' | 'custom';
-							this.plugin.settings.serverUrl = getServerUrl(value);
-							input?.setValue(this.plugin.settings.serverUrl);
-							input?.setDisabled(value !== 'custom');
+							endpoint = value as Endpoint;
+							this.plugin.settings.serverUrl = endpoints[endpoint].url;
 
-							this.configureAutoCheckDelaySlider(autoCheckDelaySlider, value);
+							if (input)
+								input.setValue(this.plugin.settings.serverUrl)
+									.setDisabled(value !== 'custom');
+
+							if (autoCheckDelaySlider)
+								this.configureAutoCheckDelaySlider(autoCheckDelaySlider, endpoint);
 
 							await this.plugin.saveSettings();
 						});
@@ -147,13 +158,20 @@ export class LTSettingsTab extends PluginSettingTab {
 					text
 						.setPlaceholder('https://your-custom-url.com')
 						.setValue(this.plugin.settings.serverUrl)
-						.setDisabled(this.plugin.settings.urlMode === 'custom')
+						.setDisabled(endpoint !== 'custom')
 						.onChange(async value => {
 							this.plugin.settings.serverUrl = value.replace(/\/v2\/check\/$/, '').replace(/\/$/, '');
+
+							endpoint = endpointFromUrl(this.plugin.settings.serverUrl);
+							if (endpoint !== 'custom') {
+								dropdown?.setValue(endpoint);
+								input?.setDisabled(true);
+							}
 							await this.plugin.saveSettings();
 						});
 				});
 			});
+
 		new Setting(containerEl)
 			.setName('API Username')
 			.setDesc('Enter a username/email for API Access')
@@ -165,80 +183,29 @@ export class LTSettingsTab extends PluginSettingTab {
 						this.plugin.settings.username = value.replace(/\s+/g, '');
 						await this.plugin.saveSettings();
 					}),
-			)
-			.then(setting => {
-				setting.descEl.createEl('br');
-				setting.descEl.createEl(
-					'a',
-					{
-						text: 'Click here for information about Premium Access',
-						href: 'https://github.com/Clemens-E/obsidian-languagetool-plugin#premium-accounts',
-					},
-					a => {
-						a.setAttr('target', '_blank');
-					},
-				);
-			});
-		let disableUrlPopup = false;
+			);
 		new Setting(containerEl)
 			.setName('API Key')
 			.setDesc('Enter an API Key')
 			.addText(text =>
 				text.setValue(this.plugin.settings.apikey || '').onChange(async value => {
 					this.plugin.settings.apikey = value.replace(/\s+/g, '');
-					if (
-						this.plugin.settings.apikey.length > 0 &&
-						this.plugin.settings.urlMode !== 'premium' &&
-						!disableUrlPopup
-					) {
-						const modal = new Modal(this.app);
-						modal.titleEl.createEl('span', { text: 'Warning' });
-						modal.contentEl.createEl('p', {
-							text: 'You have entered an API Key but you are not using the Premium Endpoint',
-						});
-						modal.contentEl.style.display = 'grid';
-						const container = modal.contentEl.createEl('div', { attr: { style: 'justify-self:center' } });
-						container.createEl('button', {
-							text: "I know what I'm doing",
-							attr: {
-								style: 'justify-self:flex-start; color:red;',
-							},
-						}).onclick = () => {
-							disableUrlPopup = true;
-							modal.close();
-						};
-						container.createEl('button', {
-							text: 'Change to Premium',
-							attr: {
-								style: 'justify-self:flex-end',
-							},
-						}).onclick = async () => {
-							this.plugin.settings.urlMode = 'premium';
-							urlDropdown?.setValue('premium');
-							this.plugin.settings.serverUrl = getServerUrl(value);
-							await this.plugin.saveSettings();
-							return modal.close();
-						};
-						modal.open();
+					if (this.plugin.settings.apikey && endpoint !== 'premium') {
+						new Notice('You have entered an API Key but you are not using the Premium Endpoint');
 					}
 					await this.plugin.saveSettings();
 				}),
 			)
 			.then(setting => {
 				setting.descEl.createEl('br');
-				setting.descEl.createEl(
-					'a',
-					{
-						text: 'Click here for information about Premium Access',
-						href: 'https://github.com/Clemens-E/obsidian-languagetool-plugin#premium-accounts',
-					},
-					a => {
-						a.setAttr('target', '_blank');
-					},
-				);
+				setting.descEl.createEl('a', {
+					text: 'Click here for information about Premium Access',
+					href: 'https://github.com/wrenger/obsidian-languagetool#premium-accounts',
+					attr: { target: '_blank' },
+				});
 			});
 		new Setting(containerEl)
-			.setName('Autocheck Text')
+			.setName('AutoCheck Text')
 			.setDesc('Check text as you type')
 			.addToggle(component => {
 				component.setValue(this.plugin.settings.shouldAutoCheck).onChange(async value => {
@@ -248,29 +215,56 @@ export class LTSettingsTab extends PluginSettingTab {
 			});
 		new Setting(containerEl)
 			.setName('AutoCheck Delay (ms)')
-			.setDesc('Length of time to wait for AutoCheck after last key press')
+			.setDesc('Time to wait for AutoCheck after the last key press')
 			.addSlider(component => {
 				autoCheckDelaySlider = component;
-				if (urlDropdown) {
-					this.configureAutoCheckDelaySlider(autoCheckDelaySlider, urlDropdown.getValue());
-				}
 
-				component.setValue(this.plugin.settings.autoCheckDelay).onChange(async value => {
-					this.plugin.settings.autoCheckDelay = value;
-					await this.plugin.saveSettings();
-				});
-
-				component.setDynamicTooltip();
+				this.configureAutoCheckDelaySlider(component, endpoint);
+				component
+					.setValue(this.plugin.settings.autoCheckDelay)
+					.onChange(async value => {
+						this.plugin.settings.autoCheckDelay = value;
+						await this.plugin.saveSettings();
+					})
+					.setDynamicTooltip();
 			});
 		new Setting(containerEl)
-			.setName('Glass Background')
-			.setDesc('Use the secondary background color of the theme or a glass background')
+			.setName('Find Synonyms')
+			.setDesc('Enables the context menu for synonyms fetched from')
 			.addToggle(component => {
-				component.setValue(this.plugin.settings.glassBg).onChange(async value => {
-					this.plugin.settings.glassBg = value;
+				component.setValue(this.plugin.settings.synonyms).onChange(async value => {
+					this.plugin.settings.synonyms = value;
 					await this.plugin.saveSettings();
 				});
+			})
+			.then(setting => {
+				setting.descEl.createEl('br');
+				setting.descEl.createEl('a', {
+					href: "https://qb-grammar-en.languagetool.org/phrasal-paraphraser/subscribe",
+					text: "https://qb-grammar-en.languagetool.org/phrasal-paraphraser/subscribe",
+					attr: { target: '_blank' },
+				});
 			});
+
+		containerEl.createEl('h3', { text: 'Language Settings' });
+
+		new Setting(containerEl)
+			.setName('Mother Tongue')
+			.setDesc('Set mother tongue if you want to be warned about false friends when writing in other languages. This setting will also be used for automatic language detection.')
+			.addDropdown(component => {
+				this.requestLanguages()
+					.then(languages => {
+						component
+							.addOption('none', '---')
+							.addOptions(Object.fromEntries(languages.map(v => [v.longCode, v.name])))
+							.onChange(async value => {
+								this.plugin.settings.motherTongue = value !== "none" ? value : undefined;
+								await this.plugin.saveSettings();
+							});
+					})
+					.catch(console.error);
+			});
+
 		let staticLanguageComponent: DropdownComponent | null;
 		let englishVarietyDropdown: DropdownComponent | null;
 		let germanVarietyDropdown: DropdownComponent | null;
@@ -286,39 +280,33 @@ export class LTSettingsTab extends PluginSettingTab {
 				staticLanguageComponent = component;
 				this.requestLanguages()
 					.then(languages => {
-						component.addOption('auto', 'Auto Detect');
-						languages.forEach(v => component.addOption(v.longCode, v.name));
-						component.setValue(this.plugin.settings.staticLanguage ?? 'auto');
-						component.onChange(async value => {
-							this.plugin.settings.staticLanguage = value;
-							if (value !== 'auto') {
-								this.plugin.settings.englishVeriety = undefined;
-								englishVarietyDropdown?.setValue('default');
-								this.plugin.settings.germanVeriety = undefined;
-								germanVarietyDropdown?.setValue('default');
-								this.plugin.settings.portugueseVeriety = undefined;
-								portugueseVarietyDropdown?.setValue('default');
-								this.plugin.settings.catalanVeriety = undefined;
-								catalanVarietyDropdown?.setValue('default');
-							}
-							await this.plugin.saveSettings();
-						});
+						component
+							.addOption('auto', 'Auto Detect')
+							.addOptions(Object.fromEntries(languages.map(v => [v.longCode, v.name])))
+							.setValue(this.plugin.settings.staticLanguage ?? 'auto')
+							.onChange(async value => {
+								this.plugin.settings.staticLanguage = value !== "auto" ? value : undefined;
+								if (value !== 'auto') {
+									this.plugin.settings.englishVariety = undefined;
+									englishVarietyDropdown?.setValue('default');
+									this.plugin.settings.germanVariety = undefined;
+									germanVarietyDropdown?.setValue('default');
+									this.plugin.settings.portugueseVariety = undefined;
+									portugueseVarietyDropdown?.setValue('default');
+									this.plugin.settings.catalanVariety = undefined;
+									catalanVarietyDropdown?.setValue('default');
+								}
+								await this.plugin.saveSettings();
+							});
 					})
 					.catch(console.error);
 			});
-		new Setting(containerEl)
-			.setName('Find Synonyms')
-			.setDesc('Enables the context menu for synonyms fetched from https://qb-grammar-en.languagetool.org/phrasal-paraphraser/subscribe')
-			.addToggle(component => {
-				component.setValue(this.plugin.settings.synonyms).onChange(async value => {
-					this.plugin.settings.synonyms = value;
-					await this.plugin.saveSettings();
-				});
-			});
 
 		containerEl.createEl('h3', { text: 'Language Varieties' });
+		containerEl.createEl('p', {
+			text: 'Some languages have varieties depending on the country they are spoken in.'
+		});
 
-		containerEl.createEl('p', { text: 'Some languages have varieties depending on the country they are spoken in.' });
 
 		new Setting(containerEl).setName('Interpret English as').addDropdown(component => {
 			englishVarietyDropdown = component;
@@ -332,14 +320,14 @@ export class LTSettingsTab extends PluginSettingTab {
 					'en-ZA': 'English (South Africa)',
 					'en-NZ': 'English (New Zealand)',
 				})
-				.setValue(this.plugin.settings.englishVeriety ?? 'default')
+				.setValue(this.plugin.settings.englishVariety ?? 'default')
 				.onChange(async value => {
 					if (value === 'default') {
-						this.plugin.settings.englishVeriety = undefined;
+						this.plugin.settings.englishVariety = undefined;
 					} else {
 						this.plugin.settings.staticLanguage = 'auto';
 						staticLanguageComponent?.setValue('auto');
-						this.plugin.settings.englishVeriety = value as 'en-US' | 'en-GB' | 'en-CA' | 'en-AU' | 'en-ZA' | 'en-NZ';
+						this.plugin.settings.englishVariety = value as EnglishVariety;
 					}
 					await this.plugin.saveSettings();
 				});
@@ -354,14 +342,14 @@ export class LTSettingsTab extends PluginSettingTab {
 					'de-CH': 'German (Switzerland)',
 					'de-AT': 'German (Austria)',
 				})
-				.setValue(this.plugin.settings.germanVeriety ?? 'default')
+				.setValue(this.plugin.settings.germanVariety ?? 'default')
 				.onChange(async value => {
 					if (value === 'default') {
-						this.plugin.settings.germanVeriety = undefined;
+						this.plugin.settings.germanVariety = undefined;
 					} else {
 						this.plugin.settings.staticLanguage = 'auto';
 						staticLanguageComponent?.setValue('auto');
-						this.plugin.settings.germanVeriety = value as 'de-DE' | 'de-CH' | 'de-AT';
+						this.plugin.settings.germanVariety = value as GermanVariety;
 					}
 					await this.plugin.saveSettings();
 				});
@@ -377,14 +365,14 @@ export class LTSettingsTab extends PluginSettingTab {
 					'pt-AO': 'Portuguese (Angola)',
 					'pt-MZ': 'Portuguese (Mozambique)',
 				})
-				.setValue(this.plugin.settings.portugueseVeriety ?? 'default')
+				.setValue(this.plugin.settings.portugueseVariety ?? 'default')
 				.onChange(async value => {
 					if (value === 'default') {
-						this.plugin.settings.portugueseVeriety = undefined;
+						this.plugin.settings.portugueseVariety = undefined;
 					} else {
 						this.plugin.settings.staticLanguage = 'auto';
 						staticLanguageComponent?.setValue('auto');
-						this.plugin.settings.portugueseVeriety = value as 'pt-BR' | 'pt-PT' | 'pt-AO' | 'pt-MZ';
+						this.plugin.settings.portugueseVariety = value as PortugueseVariety;
 					}
 					await this.plugin.saveSettings();
 				});
@@ -398,20 +386,28 @@ export class LTSettingsTab extends PluginSettingTab {
 					'ca-ES': 'Catalan',
 					'ca-ES-valencia': 'Catalan (Valencian)',
 				})
-				.setValue(this.plugin.settings.catalanVeriety ?? 'default')
+				.setValue(this.plugin.settings.catalanVariety ?? 'default')
 				.onChange(async value => {
 					if (value === 'default') {
-						this.plugin.settings.catalanVeriety = undefined;
+						this.plugin.settings.catalanVariety = undefined;
 					} else {
 						this.plugin.settings.staticLanguage = 'auto';
 						staticLanguageComponent?.setValue('auto');
-						this.plugin.settings.catalanVeriety = value as 'ca-ES' | 'ca-ES-valencia';
+						this.plugin.settings.catalanVariety = value as CatalanVariety;
 					}
 					await this.plugin.saveSettings();
 				});
 		});
 
 		containerEl.createEl('h3', { text: 'Rule Categories' });
+		containerEl.createEl('p', { text: 'The Picky mode enables a lot of extra categories and rules. Additionally, you can enable or disable specific ones down below:' }, el => {
+			el.createEl('br');
+			el.createEl('a', {
+				text: 'Click here for a list of rules and categories',
+				href: 'https://community.languagetool.org/rule/list',
+				attr: { target: '_blank' },
+			});
+		});
 
 		new Setting(containerEl)
 			.setName('Picky Mode')
@@ -426,81 +422,55 @@ export class LTSettingsTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
-			.setName('Other rule categories')
-			.setDesc('Enter a comma-separated list of categories')
+			.setName('Enabled Categories')
+			.setDesc('Comma-separated list of categories')
 			.addText(text =>
 				text
-					.setPlaceholder('Eg. CATEGORY_1,CATEGORY_2')
-					.setValue(this.plugin.settings.ruleOtherCategories || '')
+					.setPlaceholder('CATEGORY_1,CATEGORY_2')
+					.setValue(this.plugin.settings.enabledCategories ?? '')
 					.onChange(async value => {
-						this.plugin.settings.ruleOtherCategories = value.replace(/\s+/g, '');
+						this.plugin.settings.enabledCategories = value.replace(/\s+/g, '');
 						await this.plugin.saveSettings();
 					}),
-			)
-			.then(setting => {
-				setting.descEl.createEl('br');
-				setting.descEl.createEl(
-					'a',
-					{
-						text: 'Click here for a list of rules and categories',
-						href: 'https://community.languagetool.org/rule/list',
-					},
-					a => {
-						a.setAttr('target', '_blank');
-					},
-				);
-			});
+			);
 
 		new Setting(containerEl)
-			.setName('Enable Specific Rules')
-			.setDesc('Enter a comma-separated list of rules')
+			.setName('Disabled Categories')
+			.setDesc('Comma-separated list of categories')
 			.addText(text =>
 				text
-					.setPlaceholder('Eg. RULE_1,RULE_2')
-					.setValue(this.plugin.settings.ruleOtherRules || '')
+					.setPlaceholder('CATEGORY_1,CATEGORY_2')
+					.setValue(this.plugin.settings.disabledCategories ?? '')
 					.onChange(async value => {
-						this.plugin.settings.ruleOtherRules = value.replace(/\s+/g, '');
+						this.plugin.settings.disabledCategories = value.replace(/\s+/g, '');
 						await this.plugin.saveSettings();
 					}),
-			)
-			.then(setting => {
-				setting.descEl.createEl('br');
-				setting.descEl.createEl(
-					'a',
-					{
-						text: 'Click here for a list of rules and categories',
-						href: 'https://community.languagetool.org/rule/list',
-					},
-					a => {
-						a.setAttr('target', '_blank');
-					},
-				);
-			});
+			);
 
 		new Setting(containerEl)
-			.setName('Disable Specific Rules')
-			.setDesc('Enter a comma-separated list of rules')
+			.setName('Enabled Rules')
+			.setDesc('Comma-separated list of rules')
 			.addText(text =>
 				text
-					.setPlaceholder('Eg. RULE_1,RULE_2')
-					.setValue(this.plugin.settings.ruleOtherDisabledRules || '')
+					.setPlaceholder('RULE_1,RULE_2')
+					.setValue(this.plugin.settings.enabledRules ?? '')
 					.onChange(async value => {
-						this.plugin.settings.ruleOtherDisabledRules = value.replace(/\s+/g, '');
+						this.plugin.settings.enabledRules = value.replace(/\s+/g, '');
 						await this.plugin.saveSettings();
 					}),
-			)
-			.then(setting => {
-				setting.descEl.createEl('br');
-				setting.descEl.createEl(
-					'a',
-					{
-						text: 'Click here for a list of rules and categories',
-						href: 'https://community.languagetool.org/rule/list',
-					},
-					a => {
-						a.setAttr('target', '_blank');
-					},
-				);
-			});
+			);
+
+		new Setting(containerEl)
+			.setName('Disabled Rules')
+			.setDesc('Comma-separated list of rules')
+			.addText(text =>
+				text
+					.setPlaceholder('RULE_1,RULE_2')
+					.setValue(this.plugin.settings.disabledRules ?? '')
+					.onChange(async value => {
+						this.plugin.settings.disabledRules = value.replace(/\s+/g, '');
+						await this.plugin.saveSettings();
+					}),
+			);
 	}
 }

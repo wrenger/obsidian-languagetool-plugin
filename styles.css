@@ -4,6 +4,13 @@
   --lt-style: #8981f3;
 }
 
+.lt-settings-btn {
+  margin-bottom: 5px;
+}
+.lt-settings-grid {
+  display: inline-grid;
+}
+
 .lt-underline {
   cursor: pointer;
   transition: background-color 100ms ease-out;
@@ -11,23 +18,23 @@
 
 .lt-underline.lt-minor {
   text-decoration: wavy underline var(--lt-minor);
-}
-.lt-underline.lt-minor:hover {
-  background-color: color-mix(in srgb, var(--lt-minor), transparent 80%);
+  &:hover {
+    background-color: color-mix(in srgb, var(--lt-minor), transparent 80%);
+  }
 }
 
 .lt-underline.lt-major {
   text-decoration: wavy underline var(--lt-major);
-}
-.lt-underline.lt-major:hover {
-  background-color: color-mix(in srgb, var(--lt-major), transparent 80%);
+  &:hover {
+    background-color: color-mix(in srgb, var(--lt-major), transparent 80%);
+  }
 }
 
 .lt-underline.lt-style {
   text-decoration: wavy underline var(--lt-style);
-}
-.lt-underline.lt-style:hover {
-  background-color: color-mix(in srgb, var(--lt-style), transparent 80%);
+  &:hover {
+    background-color: color-mix(in srgb, var(--lt-style), transparent 80%);
+  }
 }
 
 @keyframes lineInserted {
@@ -39,9 +46,7 @@
   }
 }
 
-.lt-predictions-container-glass.cm-tooltip,
 .lt-predictions-container.cm-tooltip,
-.lt-predictions-container-glass,
 .lt-predictions-container {
   position: absolute;
   animation-duration: 150ms;
@@ -59,23 +64,19 @@
   overflow: visible;
 }
 
-.lt-predictions-container-glass {
-  background: hsla(0, 0%, 100%, 0.25);
-  backdrop-filter: blur(12px);
-}
-
 .lt-predictions-container > button {
   transition-delay: 0.5s;
 }
 
-.lt-buttoncontainer:not(:empty) {
-  padding-top: 10px;
-}
-
-.lt-buttoncontainer > button {
-  margin-right: 4px;
-  margin-bottom: 4px;
-  padding: 4px 10px;
+.lt-buttoncontainer{
+  &:not(:empty) {
+    padding-top: 10px;
+  }
+  & > button {
+    margin-right: 4px;
+    margin-bottom: 4px;
+    padding: 4px 10px;
+  }
 }
 
 .lt-title {
@@ -109,8 +110,7 @@
 .lt-info-box {
   position: absolute;
   right: 0;
-  animation-duration: 150ms;
-  animation-name: lineInserted;
+  animation: lineInserted 150ms;
   font-family: var(--default-font);
   font-size: 0.93rem;
   padding: 12px 0;
@@ -133,7 +133,6 @@
   font-size: 0.8rem;
   color: var(--text-muted);
   user-select: text;
-  -webkit-user-select: text;
 }
 
 .lt-ignorecontainer {
@@ -150,8 +149,7 @@
 
 .lt-status-bar-check-icon {
   display: block;
-  text-decoration: underline;
-  text-decoration-style: dotted;
+  text-decoration: underline dotted;
 }
 
 .lt-ignore-btn {
@@ -164,23 +162,21 @@
   align-items: center;
   line-height: 1;
   border-top: 1px solid var(--background-modifier-border);
+  & > span {
+    display: flex;
+    &:last-child {
+      margin-left: 5px;
+    }
+  }
 }
 
-.lt-ignore-btn > span {
-  display: flex;
-}
-
-.lt-ignore-btn > span:last-child {
-  margin-left: 5px;
-}
-
-.lt-minor .lt-title > span {
+.lt-minor > .lt-title > span {
   text-decoration: underline 2px var(--lt-minor);
 }
-.lt-major .lt-title > span {
+.lt-major > .lt-title > span {
   text-decoration: underline 2px var(--lt-major);
 }
-.lt-style .lt-title > span {
+.lt-style > .lt-title > span {
   text-decoration: underline 2px var(--lt-style);
 }
 

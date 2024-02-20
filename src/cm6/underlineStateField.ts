@@ -102,12 +102,7 @@ export const underlineField = StateField.define<DecorationSet>({
 
 			const nodeProps = tree.resolveInner(pos, 1).type.prop(tokenClassNodeProp);
 
-			if (nodeProps && ignoreListRegEx.test(nodeProps)) {
-				seenPositions[pos] = false;
-			} else {
-				seenPositions[pos] = true;
-			}
-
+			seenPositions[pos] = !(nodeProps && ignoreListRegEx.test(nodeProps));
 			return seenPositions[pos];
 		};
 
