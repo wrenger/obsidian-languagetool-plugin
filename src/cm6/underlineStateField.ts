@@ -12,10 +12,16 @@ export interface LTRange {
 	to: number;
 };
 
+type UnderlineMatcher = (underline: LTMatch) => boolean;
+
+/** Add new underline */
 export const addUnderline = StateEffect.define<LTMatch>();
-export const clearUnderlines = StateEffect.define();
+/** Remove all underlines */
+export const clearAllUnderlines = StateEffect.define();
+/** Remove underlines in range */
 export const clearUnderlinesInRange = StateEffect.define<LTRange>();
-export const ignoreUnderline = StateEffect.define<LTRange>();
+/** Ignore a specific underline */
+export const clearMatchingUnderlines = StateEffect.define<UnderlineMatcher>();
 
 function rangeOverlapping(first: LTRange, second: LTRange): boolean {
 	return (
@@ -26,58 +32,6 @@ function rangeOverlapping(first: LTRange, second: LTRange): boolean {
 	);
 }
 
-export const ignoredUnderlineField = StateField.define<{
-	marks: DecorationSet;
-	ignoredRanges: Set<string>;
-}>({
-	create() {
-		return {
-			// Using a decoration set allows us to update ignored ranges
-			// when the document around them is changed
-			marks: Decoration.none,
-
-			// But we use this set to check if a range is ignored. See
-			// underlineField below
-			ignoredRanges: new Set(),
-		};
-	},
-	update(state, tr) {
-		state.marks = state.marks.map(tr.changes);
-
-		// Rebuild ignoredRanges to account for tr.changes
-		state.ignoredRanges.clear();
-		state.marks.between(0, tr.newDoc.length, (from, to) => {
-			state.ignoredRanges.add(`${from},${to}`);
-		});
-
-		// Clear out any decorations when their contents are edited
-		if (tr.docChanged && tr.selection && state.marks.size) {
-			state.marks = state.marks.update({
-				filter: (from, to) => {
-					const overlapping = rangeOverlapping({ from, to }, tr.selection!.main);
-					if (overlapping) {
-						state.ignoredRanges.delete(`${from},${to}`);
-					}
-					return !overlapping;
-				},
-			});
-		}
-
-		for (const e of tr.effects) {
-			if (e.is(ignoreUnderline)) {
-				const { from, to } = e.value;
-
-				state.ignoredRanges.add(`${from},${to}`);
-				state.marks = state.marks.update({
-					add: [Decoration.mark({}).range(from, to)],
-				});
-			}
-		}
-
-		return state;
-	},
-});
-
 export const underlineField = StateField.define<DecorationSet>({
 	create() {
 		return Decoration.none;
@@ -85,7 +39,6 @@ export const underlineField = StateField.define<DecorationSet>({
 	update(underlines, tr) {
 		underlines = underlines.map(tr.changes);
 
-		const { ignoredRanges } = tr.state.field(ignoredUnderlineField);
 		const seenRanges = new Set<string>();
 
 		// Memoize any positions we check so we can avoid some work
@@ -94,41 +47,26 @@ export const underlineField = StateField.define<DecorationSet>({
 
 		// Prevent decorations in codeblocks, etc...
 		const canDecorate = (pos: number) => {
-			if (seenPositions[pos] !== undefined) {
-				return seenPositions[pos];
+			if (seenPositions[pos] == undefined) {
+				if (!tree) tree = syntaxTree(tr.state);
+
+				const nodeProps = tree.resolveInner(pos, 1).type.prop(tokenClassNodeProp);
+				seenPositions[pos] = !(nodeProps && ignoreListRegEx.test(nodeProps));
 			}
-
-			if (!tree) tree = syntaxTree(tr.state);
-
-			const nodeProps = tree.resolveInner(pos, 1).type.prop(tokenClassNodeProp);
-
-			seenPositions[pos] = !(nodeProps && ignoreListRegEx.test(nodeProps));
 			return seenPositions[pos];
 		};
 
 		// Ignore certain rules in special cases
 		const isRuleAllowed = (underline: LTMatch) => {
-			// Don't show spelling errors for entries in the user dictionary
-			if (underline.categoryId === 'TYPOS') {
-				const spellcheckDictionary: string[] = ((window as any).app.vault as any).getConfig('spellcheckDictionary');
-				const str = tr.state.sliceDoc(underline.from, underline.to);
-
-				if (spellcheckDictionary && spellcheckDictionary.includes(str)) {
-					return false;
-				}
-			}
-
-			// Don't display whitespace rules in tables
 			if (!tree) tree = syntaxTree(tr.state);
 
+			// Don't display whitespace rules in tables
 			const lineNodeProp = tree.resolve(tr.newDoc.lineAt(underline.from).from, 1).type.prop(tokenClassNodeProp);
-
 			if (lineNodeProp?.includes('table')) {
 				if (underline.ruleId === 'WHITESPACE_RULE') {
 					return false;
 				}
 			}
-
 			return true;
 		};
 
@@ -145,7 +83,6 @@ export const underlineField = StateField.define<DecorationSet>({
 				const key = `${underline.from},${underline.to}`;
 
 				if (
-					!ignoredRanges.has(key) &&
 					!seenRanges.has(key) &&
 					canDecorate(underline.from) &&
 					canDecorate(underline.to) &&
@@ -161,11 +98,17 @@ export const underlineField = StateField.define<DecorationSet>({
 						],
 					});
 				}
-			} else if (e.is(clearUnderlines)) {
+			} else if (e.is(clearAllUnderlines)) {
 				underlines = Decoration.none;
-			} else if (e.is(clearUnderlinesInRange) || e.is(ignoreUnderline)) {
+			} else if (e.is(clearUnderlinesInRange)) {
 				underlines = underlines.update({
+					filterFrom: e.value.from,
+					filterTo: e.value.to,
 					filter: (from, to) => !rangeOverlapping({ from, to }, e.value),
+				});
+			} else if (e.is(clearMatchingUnderlines)) {
+				underlines = underlines.update({
+					filter: (from, to, value) => !e.value(value.spec.underline as LTMatch),
 				});
 			}
 		}

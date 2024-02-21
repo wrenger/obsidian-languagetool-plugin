@@ -8,33 +8,35 @@ import {
 	TextComponent,
 } from 'obsidian';
 import LanguageToolPlugin from './main';
-import { logs } from './api';
 
-const autoCheckDelayMax = 3000;
-const autoCheckDelayStep = 200;
-const secsPerMin = 60;
-const millis = 1000;
+const autoCheckDelayMax = 5000;
+const autoCheckDelayStep = 250;
 
-// See https://languagetool.org/http-api/swagger-ui
+class Endpoint {
+	url: string;
+	requestsPerSec: number;
+
+	constructor(url: string, requestsPerSec: number) {
+		this.url = url;
+		this.requestsPerSec = requestsPerSec;
+	}
+	/** Return the minimum delay in ms */
+	get minDelay() {
+		return (60 / this.requestsPerSec) * 1000;
+	}
+}
+
+/** See https://languagetool.org/http-api/swagger-ui */
 const endpoints = {
-	standard: {
-		url: 'https://api.languagetool.org',
-		timeout: (secsPerMin / 80) * millis,
-	},
-	premium: {
-		url: 'https://api.languagetoolplus.com',
-		timeout: (secsPerMin / 20) * millis,
-	},
-	custom: {
-		url: '',
-		timeout: (secsPerMin / 20) * millis,
-	},
+	standard: new Endpoint('https://api.languagetool.org', 20),
+	premium: new Endpoint('https://api.languagetoolplus.com', 80),
+	custom: new Endpoint('', 120),
 };
-type Endpoint = keyof typeof endpoints;
+type EndpointType = keyof typeof endpoints;
 
-function endpointFromUrl(url: string): Endpoint {
+function endpointFromUrl(url: string): EndpointType {
 	for (const [key, value] of Object.entries(endpoints)) {
-		if (value.url === url) return key as Endpoint;
+		if (value.url === url) return key as EndpointType;
 	}
 	return 'custom';
 }
@@ -75,7 +77,7 @@ export interface LTSettings {
 
 export const DEFAULT_SETTINGS: LTSettings = {
 	serverUrl: Object.keys(endpoints)[0],
-	autoCheckDelay: endpoints.standard.timeout,
+	autoCheckDelay: endpoints.standard.minDelay,
 	shouldAutoCheck: false,
 	synonyms: false,
 	pickyMode: false,
@@ -89,13 +91,10 @@ export class LTSettingsTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
-	private configureAutoCheckDelaySlider(delaySlider: SliderComponent, value: Endpoint) {
-		const minAutoCheckDelay = endpoints[value].timeout;
-
+	private configureAutoCheckDelaySlider(delaySlider: SliderComponent, value: EndpointType) {
+		const minAutoCheckDelay = endpoints[value].minDelay;
 		this.plugin.settings.autoCheckDelay = Math.clamp(
 			this.plugin.settings.autoCheckDelay, minAutoCheckDelay, autoCheckDelayMax);
-
-		delaySlider.setDisabled(value === 'standard');
 		delaySlider.setLimits(minAutoCheckDelay, autoCheckDelayMax, autoCheckDelayStep);
 	}
 
@@ -115,7 +114,7 @@ export class LTSettingsTab extends PluginSettingTab {
 			cls: "lt-settings-btn",
 		});
 		copyButton.onclick = async () => {
-			await window.navigator.clipboard.writeText(logs.join('\n'));
+			await window.navigator.clipboard.writeText(this.plugin.logs.join('\n'));
 			new Notice('Logs copied to clipboard');
 		};
 
@@ -140,7 +139,7 @@ export class LTSettingsTab extends PluginSettingTab {
 						})
 						.setValue(endpoint)
 						.onChange(async value => {
-							endpoint = value as Endpoint;
+							endpoint = value as EndpointType;
 							this.plugin.settings.serverUrl = endpoints[endpoint].url;
 
 							if (input)

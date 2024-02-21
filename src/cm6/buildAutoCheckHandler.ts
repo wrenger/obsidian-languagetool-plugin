@@ -22,6 +22,9 @@ export function buildAutoCheckHandler(plugin: LanguageToolPlugin): Extension {
 			const startLine = view.lineBlockAt(minRange);
 			const endLine = view.lineBlockAt(maxRange);
 
+			// TODO: Start at the beginning of a block (table start, list start, etc...)
+			// The codemirror syntax tree doesn't provide this info
+
 			plugin.runDetection(view, {from: startLine.from, to: endLine.to}).catch(e => {
 				console.error(e);
 			});

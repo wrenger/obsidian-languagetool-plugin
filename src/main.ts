@@ -1,19 +1,18 @@
-import { Command, MarkdownView, Menu, Plugin, setIcon } from 'obsidian';
+import { Command, MarkdownView, Menu, Notice, Plugin, setIcon } from 'obsidian';
 import { Decoration, EditorView } from '@codemirror/view';
 import { StateEffect } from '@codemirror/state';
-import QuickLRU from 'quick-lru';
 import { DEFAULT_SETTINGS, LTSettings, LTSettingsTab } from './settingsTab';
-import { hashString } from './helpers';
-import { LTMatch, getDetectionResult, synonyms } from './api';
+import { LTMatch, check, synonyms } from './api';
 import { buildUnderlineExtension } from './cm6/underlineExtension';
-import { LTRange, addUnderline, clearUnderlines, clearUnderlinesInRange, underlineField } from './cm6/underlineStateField';
+import { LTRange, addUnderline, clearAllUnderlines, clearUnderlinesInRange, underlineField } from './cm6/underlineStateField';
 
 export default class LanguageToolPlugin extends Plugin {
 	public settings: LTSettings;
 	private statusBarText: HTMLElement;
 
-	private hashLru: QuickLRU<number, LTMatch[]>;
 	private isLoading = false;
+
+	public logs: string[] = [];
 
 	public async onload(): Promise<void> {
 		// Settings
@@ -29,9 +28,6 @@ export default class LanguageToolPlugin extends Plugin {
 		});
 
 		// Editor functionality
-		this.hashLru = new QuickLRU<number, LTMatch[]>({
-			maxSize: 10,
-		});
 		this.registerEditorExtension(buildUnderlineExtension(this));
 
 		// Commands
@@ -41,7 +37,8 @@ export default class LanguageToolPlugin extends Plugin {
 	}
 
 	public onunload() {
-		this.hashLru.clear();
+		this.logs = [];
+		this.isLoading = false;
 	}
 
 	private registerCommands() {
@@ -49,7 +46,9 @@ export default class LanguageToolPlugin extends Plugin {
 			id: 'ltcheck-text',
 			name: 'Check Text',
 			editorCallback: (editor, view) => {
-				this.runDetection((editor as any).cm as EditorView).catch(e => {
+				// @ts-expect-error, not typed
+				const editorView = editor.cm as EditorView;
+				this.runDetection(editorView).catch(e => {
 					console.error(e);
 				});
 			},
@@ -68,9 +67,10 @@ export default class LanguageToolPlugin extends Plugin {
 			id: 'ltclear',
 			name: 'Clear Suggestions',
 			editorCallback: editor => {
-				const cm = (editor as any).cm as EditorView;
-				cm.dispatch({
-					effects: [clearUnderlines.of(null)],
+				// @ts-expect-error, not typed
+				const editorView = editor.cm as EditorView;
+				editorView.dispatch({
+					effects: [clearAllUnderlines.of(null)],
 				});
 			},
 		});
@@ -158,33 +158,37 @@ export default class LanguageToolPlugin extends Plugin {
 		this.app.workspace.on('editor-menu', (menu, editor, view) => {
 			if (!this.settings.synonyms) return;
 
-			let cm = (editor as any).cm as EditorView;
-			let selection = cm.state.selection.main;
+			// @ts-expect-error, not typed
+			const editorView = editor.cm as EditorView;
+			let selection = editorView.state.selection.main;
 			if (selection.empty) return;
 
-			let word = cm.state.sliceDoc(cm.state.selection.main.from, cm.state.selection.main.to);
+			let word = editorView.state.sliceDoc(
+				editorView.state.selection.main.from,
+				editorView.state.selection.main.to);
 			if (word.match(/[\s\.]/)) return;
 
 			menu.addItem(item => {
 				item.setTitle('Synonyms');
 				item.setIcon('square-stack');
 				item.onClick(() => {
-					let line = cm.state.doc.lineAt(selection.from);
+					let line = editorView.state.doc.lineAt(selection.from);
 
 					let prefix = line.text.slice(0, selection.from - line.from).lastIndexOf('.') + 1;
 					let sentence_raw = line.text.slice(prefix);
-					let sentence = sentence_raw.trimLeft();
+					let sentence = sentence_raw.trimStart();
 					let offset = line.from + prefix + sentence_raw.length - sentence.length;
 					let sel = { from: selection.from - offset, to: selection.to - offset };
 
-					sentence = sentence.trimRight();
+					sentence = sentence.trimEnd();
 					let suffix = sentence.indexOf('.');
 					if (suffix !== -1) sentence = sentence.slice(0, suffix + 1);
 
 					synonyms(sentence, sel).then(synonyms => {
-						cm.dispatch({
+						editorView.dispatch({
 							effects: [
 								addUnderline.of({
+									text: word,
 									from: selection.from,
 									to: selection.to,
 									title: 'Synonyms',
@@ -234,7 +238,9 @@ export default class LanguageToolPlugin extends Plugin {
 					const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 					if (view && view.getMode() === 'source') {
 						try {
-							await this.runDetection((view.editor as any).cm);
+							// @ts-expect-error, not typed
+							const editorView = view.editor.cm as EditorView;
+							await this.runDetection(editorView);
 						} catch (e) {
 							console.error(e);
 						}
@@ -256,9 +262,10 @@ export default class LanguageToolPlugin extends Plugin {
 					const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 					if (!view) return;
 
-					const cm = (view.editor as any).cm as EditorView;
-					cm.dispatch({
-						effects: [clearUnderlines.of(null)],
+					// @ts-expect-error, not typed
+					const editorView = view.editor.cm as EditorView;
+					editorView.dispatch({
+						effects: [clearAllUnderlines.of(null)],
 					});
 				});
 			})
@@ -269,8 +276,6 @@ export default class LanguageToolPlugin extends Plugin {
 	};
 
 	public async runDetection(editor: EditorView, range?: LTRange): Promise<void> {
-		this.setStatusBarWorking();
-
 		const selection = editor.state.selection.main;
 		if (!range && !selection.empty) {
 			range = { ...selection };
@@ -278,19 +283,22 @@ export default class LanguageToolPlugin extends Plugin {
 
 		const offset = range ? range.from : 0;
 		const text = range ? editor.state.sliceDoc(range.from, range.to) : editor.state.sliceDoc(0);
-		const hash = hashString(text);
+		if (!text.trim())
+			return;
 
 		let matches: LTMatch[];
-		if (this.hashLru.has(hash)) {
-			matches = this.hashLru.get(hash)!;
-		} else {
-			try {
-				matches = await getDetectionResult(offset, text, () => this.settings);
-				this.hashLru.set(hash, matches);
-			} catch (e) {
-				this.setStatusBarReady();
-				return Promise.reject(e);
+		try {
+			this.setStatusBarWorking();
+			matches = await check(this.settings, offset, text);
+		} catch (e) {
+			console.error(e);
+			if (e instanceof Error) {
+				this.pushLogs(e, this.settings);
+				new Notice(e.message, 5000);
 			}
+			return;
+		} finally {
+			this.setStatusBarReady();
 		}
 
 		const effects: StateEffect<any>[] = [];
@@ -298,11 +306,20 @@ export default class LanguageToolPlugin extends Plugin {
 		if (range) {
 			effects.push(clearUnderlinesInRange.of(range));
 		} else {
-			effects.push(clearUnderlines.of(null));
+			effects.push(clearAllUnderlines.of(null));
 		}
 
 		if (matches) {
+			// TODO: Allow removing words from the dictionary
+			const spellcheckDictionary: string[] = (this.app.vault as any).getConfig('spellcheckDictionary') || [];
+			console.log(spellcheckDictionary);
+
 			for (const match of matches) {
+				// Ignore typos that are in the spellcheck dictionary
+				if (match.categoryId === 'TYPOS' && spellcheckDictionary.includes(match.text)) {
+					continue;
+				}
+
 				effects.push(addUnderline.of(match));
 			}
 		}
@@ -310,8 +327,23 @@ export default class LanguageToolPlugin extends Plugin {
 		if (effects.length) {
 			editor.dispatch({ effects });
 		}
+	}
 
-		this.setStatusBarReady();
+	private async pushLogs(e: Error, settings: LTSettings): Promise<void> {
+		let debugString = `${new Date().toLocaleString()}:
+Error: '${e.message}'
+Settings: ${JSON.stringify({ ...settings, username: 'REDACTED', apikey: 'REDACTED' })}
+`;
+		if (settings.username || settings.apikey) {
+			debugString = debugString
+				.replaceAll(settings.username ?? 'username', '<<username>>')
+				.replaceAll(settings.apikey ?? 'apiKey', '<<apikey>>');
+		}
+
+		this.logs.push(debugString);
+		if (this.logs.length > 10) {
+			this.logs.shift();
+		}
 	}
 
 	public async loadSettings(): Promise<void> {

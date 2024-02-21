@@ -3,7 +3,7 @@ import { StateField, EditorState } from '@codemirror/state';
 import { categoryCssClass } from '../helpers';
 import { setIcon } from 'obsidian';
 import LanguageToolPlugin from 'src/main';
-import { clearUnderlinesInRange, underlineField, ignoreUnderline } from './underlineStateField';
+import { clearUnderlinesInRange, underlineField, clearMatchingUnderlines } from './underlineStateField';
 import { LTMatch } from "src/api";
 
 function constructTooltip(plugin: LanguageToolPlugin, view: EditorView, underline: LTMatch): HTMLDivElement {
@@ -23,7 +23,6 @@ function constructTooltip(plugin: LanguageToolPlugin, view: EditorView, underlin
 		}
 
 		const clearUnderlineEffect = clearUnderlinesInRange.of({ ...underline });
-		const ignoreUnderlineEffect = ignoreUnderline.of({ ...underline });
 
 		root.createDiv({ cls: 'lt-bottom' }, bottom => {
 			if (buttons.length) {
@@ -52,9 +51,7 @@ function constructTooltip(plugin: LanguageToolPlugin, view: EditorView, underlin
 					button.onclick = () => {
 						const popup = document.getElementsByClassName('lt-info-box').item(0);
 						if (!popup) {
-							throw Error(
-								'Programming error: failed to create popup. Please notify the LanguageTool maintainer if this problem persists.',
-							);
+							throw Error('Programming error: failed to create popup.',);
 						}
 						if (popup.hasClass('hidden')) {
 							popup.removeClass('hidden');
@@ -85,8 +82,9 @@ function constructTooltip(plugin: LanguageToolPlugin, view: EditorView, underlin
 							view.state.sliceDoc(underline.from, underline.to),
 						]);
 
+						// Remove other underlines with the same word
 						view.dispatch({
-							effects: [clearUnderlineEffect],
+							effects: [clearMatchingUnderlines.of(match => match.text === underline.text)],
 						});
 					};
 				} else {
@@ -94,7 +92,7 @@ function constructTooltip(plugin: LanguageToolPlugin, view: EditorView, underlin
 					button.createSpan({ text: 'Ignore suggestion' });
 					button.onclick = () => {
 						view.dispatch({
-							effects: [ignoreUnderlineEffect],
+							effects: [clearUnderlineEffect],
 						});
 					};
 				}
@@ -109,9 +107,9 @@ function constructTooltip(plugin: LanguageToolPlugin, view: EditorView, underlin
 						else plugin.settings.disabledRules = ruleId;
 						plugin.saveSettings();
 
-						// FIXME: Remove other underlines of the same rule
+						// Remove other underlines of the same rule
 						view.dispatch({
-							effects: [clearUnderlineEffect],
+							effects: [clearMatchingUnderlines.of(match => match.ruleId === ruleId)],
 						});
 					};
 				});

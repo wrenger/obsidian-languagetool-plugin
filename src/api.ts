@@ -1,9 +1,9 @@
 import * as Remark from 'annotatedtext-remark';
-import { Notice } from 'obsidian';
 import { LTSettings } from './settingsTab';
 
 /** A typo or grammar issue detected by LanguageTool */
 export interface LTMatch {
+	text: string;
 	from: number;
 	to: number;
 	title: string;
@@ -46,15 +46,10 @@ interface Category {
 	name: string;
 }
 
-
-export const logs: string[] = [];
-
-let lastStatus: 'ok' | 'request-failed' | 'request-not-ok' | 'json-parse-error' = 'ok';
-
-export async function getDetectionResult(
+export async function check(
+	settings: LTSettings,
 	offset: number,
 	text: string,
-	getSettings: () => LTSettings,
 ): Promise<LTMatch[]> {
 	const parsedText = Remark.build(text, {
 		...Remark.defaults,
@@ -74,46 +69,35 @@ export async function getDetectionResult(
 		},
 	});
 
-	const settings = getSettings();
-
-	const params: { [key: string]: string | boolean } = {
+	const params: { [key: string]: string } = {
 		data: JSON.stringify(parsedText),
 		language: settings.staticLanguage ?? 'auto',
-		enabledOnly: false,
+		enabledOnly: 'false',
 		level: settings.pickyMode ? 'picky' : 'default',
 	};
 
-	if (settings.motherTongue) {
+	if (settings.motherTongue)
 		params.motherTongue = settings.motherTongue;
-	}
 
-	if (settings.enabledCategories) {
+	if (settings.enabledCategories)
 		params.enabledCategories = settings.enabledCategories;
-	}
-	if (settings.disabledCategories) {
+	if (settings.disabledCategories)
 		params.disabledCategories = settings.disabledCategories;
-	}
 
-	if (settings.enabledRules) {
+	if (settings.enabledRules)
 		params.enabledRules = settings.enabledRules;
-	}
-	if (settings.disabledRules) {
+	if (settings.disabledRules)
 		params.disabledRules = settings.disabledRules;
-	}
 
 	let preferredVariants = [];
-	if (settings.englishVariety) {
+	if (settings.englishVariety)
 		preferredVariants.push(settings.englishVariety);
-	}
-	if (settings.germanVariety) {
+	if (settings.germanVariety)
 		preferredVariants.push(settings.germanVariety);
-	}
-	if (settings.portugueseVariety) {
+	if (settings.portugueseVariety)
 		preferredVariants.push(settings.portugueseVariety);
-	}
-	if (settings.catalanVariety) {
+	if (settings.catalanVariety)
 		preferredVariants.push(settings.catalanVariety);
-	}
 	params.preferredVariants = preferredVariants.join(',');
 
 	if (settings.apikey && settings.username) {
@@ -125,55 +109,30 @@ export async function getDetectionResult(
 	try {
 		res = await fetch(`${settings.serverUrl}/v2/check`, {
 			method: 'POST',
-			body: Object.keys(params)
-				.map(key => {
-					return `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`;
-				})
-				.join('&'),
+			body: new URLSearchParams(params),
 			headers: {
 				'Content-Type': 'application/x-www-form-urlencoded',
 				Accept: 'application/json',
 			},
 		});
 	} catch (e) {
-		const status = 'request-failed';
-		if (lastStatus !== status || !settings.shouldAutoCheck) {
-			new Notice(`Request to LanguageTool server failed. Please check your connection and LanguageTool server URL`, 3000);
-			lastStatus = status;
-		}
-		return Promise.reject(e);
+		console.log(e);
+		throw new Error(`Request to LanguageTool failed: Please check your connection and server URL.\n${e}`);
 	}
-
 	if (!res.ok) {
-		const status = 'request-not-ok';
-		await pushLogs(res, settings);
-		if (lastStatus !== status || !settings.shouldAutoCheck) {
-			new Notice(`Request to LanguageTool failed\n${res.statusText}Check Plugin Settings for Logs`, 3000);
-			lastStatus = status;
-		}
-		return Promise.reject(new Error(`unexpected status ${res.status}, see network tab`));
+		throw new Error(`Request to LanguageTool failed: Unexpected response status: ${res.statusText}`);
 	}
 
 	let body: LTResponse;
 	try {
 		body = await res.json();
 	} catch (e) {
-		const status = 'json-parse-error';
-		if (lastStatus !== status || !settings.shouldAutoCheck) {
-			new Notice(`Error processing response from LanguageTool server`, 3000);
-			lastStatus = status;
-		}
-		return Promise.reject(e);
-	}
-
-	const status = 'ok';
-	if (lastStatus !== status || !settings.shouldAutoCheck) {
-		new Notice(`LanguageTool detection restored`, 5000);
-		lastStatus = status;
+		throw new Error(`Error processing response from LanguageTool server: ${e.message}`);
 	}
 
 	return body.matches?.map(match => {
 		return {
+			text: text.slice(match.offset, match.offset + match.length),
 			from: offset + match.offset,
 			to: offset + match.offset + match.length,
 			title: match.shortMessage,
@@ -183,26 +142,6 @@ export async function getDetectionResult(
 			ruleId: match.rule.id,
 		};
 	}) ?? [];
-}
-
-export async function pushLogs(res: Response, settings: LTSettings): Promise<void> {
-	let debugString = `${new Date().toLocaleString()}:
-  url used for request: ${res.url}
-  Status: ${res.status}
-  Body: ${(await res.text()).slice(0, 200)}
-  Settings: ${JSON.stringify({ ...settings, username: 'REDACTED', apikey: 'REDACTED' })}
-  `;
-	if (settings.username || settings.apikey) {
-		debugString = debugString
-			.replaceAll(settings.username ?? 'username', '<<username>>')
-			.replaceAll(settings.apikey ?? 'apiKey', '<<apikey>>');
-	}
-
-	logs.push(debugString);
-
-	if (logs.length > 10) {
-		logs.shift();
-	}
 }
 
 export async function synonyms(sentence: string, selection: { from: number; to: number }): Promise<string[]> {
