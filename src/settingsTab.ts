@@ -108,15 +108,16 @@ export class LTSettingsTab extends PluginSettingTab {
 	public display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
-		containerEl.createEl('h2', { text: this.plugin.manifest.name });
-		const copyButton = containerEl.createEl('button', {
-			text: 'Copy failed Request Logs',
-			cls: "lt-settings-btn",
-		});
-		copyButton.onclick = async () => {
-			await window.navigator.clipboard.writeText(this.plugin.logs.join('\n'));
-			new Notice('Logs copied to clipboard');
-		};
+
+		new Setting(containerEl)
+			.setName('Error logs')
+			.setDesc(`${this.plugin.logs.length} messages`)
+			.addButton(component => {
+				component.setButtonText('Copy to clipboard').onClick(async () => {
+					await window.navigator.clipboard.writeText(this.plugin.logs.join('\n'));
+					new Notice('Logs copied to clipboard');
+				});
+			})
 
 		let endpoint = endpointFromUrl(this.plugin.settings.serverUrl);
 		let autoCheckDelaySlider: SliderComponent | null = null;
@@ -172,11 +173,11 @@ export class LTSettingsTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
-			.setName('API Username')
-			.setDesc('Enter a username/email for API Access')
+			.setName('API username')
+			.setDesc('Enter a username/mail for API access')
 			.addText(text =>
 				text
-					.setPlaceholder('peterlustig@gmail.com')
+					.setPlaceholder('peterlustig@example.com')
 					.setValue(this.plugin.settings.username || '')
 					.onChange(async value => {
 						this.plugin.settings.username = value.replace(/\s+/g, '');
@@ -184,8 +185,14 @@ export class LTSettingsTab extends PluginSettingTab {
 					}),
 			);
 		new Setting(containerEl)
-			.setName('API Key')
-			.setDesc('Enter an API Key')
+			.setName('API key')
+			.setDesc(createFragment((frag) => {
+				frag.createEl('a', {
+					text: 'Click here for information about Premium Access',
+					href: 'https://github.com/wrenger/obsidian-languagetool#premium-accounts',
+					attr: { target: '_blank' },
+				});
+			}))
 			.addText(text =>
 				text.setValue(this.plugin.settings.apikey || '').onChange(async value => {
 					this.plugin.settings.apikey = value.replace(/\s+/g, '');
@@ -194,17 +201,9 @@ export class LTSettingsTab extends PluginSettingTab {
 					}
 					await this.plugin.saveSettings();
 				}),
-			)
-			.then(setting => {
-				setting.descEl.createEl('br');
-				setting.descEl.createEl('a', {
-					text: 'Click here for information about Premium Access',
-					href: 'https://github.com/wrenger/obsidian-languagetool#premium-accounts',
-					attr: { target: '_blank' },
-				});
-			});
+			);
 		new Setting(containerEl)
-			.setName('AutoCheck Text')
+			.setName('Auto check text')
 			.setDesc('Check text as you type')
 			.addToggle(component => {
 				component.setValue(this.plugin.settings.shouldAutoCheck).onChange(async value => {
@@ -213,8 +212,8 @@ export class LTSettingsTab extends PluginSettingTab {
 				});
 			});
 		new Setting(containerEl)
-			.setName('AutoCheck Delay (ms)')
-			.setDesc('Time to wait for AutoCheck after the last key press')
+			.setName('Auto check delay (ms)')
+			.setDesc('Time to wait for autocheck after the last key press')
 			.addSlider(component => {
 				autoCheckDelaySlider = component;
 
@@ -228,27 +227,29 @@ export class LTSettingsTab extends PluginSettingTab {
 					.setDynamicTooltip();
 			});
 		new Setting(containerEl)
-			.setName('Find Synonyms')
-			.setDesc('Enables the context menu for synonyms fetched from')
+			.setName('Find synonyms')
+			.setDesc(createFragment((frag) => {
+				frag.appendText('Enables the context menu for synonyms fetched from');
+				frag.createEl('br');
+				frag.createEl('a', {
+					text: 'https://qb-grammar-en.languagetool.org/phrasal-paraphraser/subscribe',
+					href: 'https://qb-grammar-en.languagetool.org/phrasal-paraphraser/subscribe',
+					attr: { target: '_blank' },
+				});
+			}))
 			.addToggle(component => {
 				component.setValue(this.plugin.settings.synonyms).onChange(async value => {
 					this.plugin.settings.synonyms = value;
 					await this.plugin.saveSettings();
 				});
-			})
-			.then(setting => {
-				setting.descEl.createEl('br');
-				setting.descEl.createEl('a', {
-					href: "https://qb-grammar-en.languagetool.org/phrasal-paraphraser/subscribe",
-					text: "https://qb-grammar-en.languagetool.org/phrasal-paraphraser/subscribe",
-					attr: { target: '_blank' },
-				});
 			});
 
-		containerEl.createEl('h3', { text: 'Language Settings' });
+		new Setting(containerEl)
+			.setName('Language settings')
+			.setHeading();
 
 		new Setting(containerEl)
-			.setName('Mother Tongue')
+			.setName('Mother tongue')
 			.setDesc('Set mother tongue if you want to be warned about false friends when writing in other languages. This setting will also be used for automatic language detection.')
 			.addDropdown(component => {
 				this.requestLanguages()
@@ -265,13 +266,13 @@ export class LTSettingsTab extends PluginSettingTab {
 			});
 
 		let staticLanguageComponent: DropdownComponent | null;
-		let englishVarietyDropdown: DropdownComponent | null;
-		let germanVarietyDropdown: DropdownComponent | null;
-		let portugueseVarietyDropdown: DropdownComponent | null;
-		let catalanVarietyDropdown: DropdownComponent | null;
+		let englishDropdown: DropdownComponent | null;
+		let germanDropdown: DropdownComponent | null;
+		let portugueseDropdown: DropdownComponent | null;
+		let catalanDropdown: DropdownComponent | null;
 
 		new Setting(containerEl)
-			.setName('Static Language')
+			.setName('Static language')
 			.setDesc(
 				'Set a static language that will always be used (LanguageTool tries to auto detect the language, this is usually not necessary)',
 			)
@@ -287,13 +288,13 @@ export class LTSettingsTab extends PluginSettingTab {
 								this.plugin.settings.staticLanguage = value !== "auto" ? value : undefined;
 								if (value !== 'auto') {
 									this.plugin.settings.englishVariety = undefined;
-									englishVarietyDropdown?.setValue('default');
+									englishDropdown?.setValue('default');
 									this.plugin.settings.germanVariety = undefined;
-									germanVarietyDropdown?.setValue('default');
+									germanDropdown?.setValue('default');
 									this.plugin.settings.portugueseVariety = undefined;
-									portugueseVarietyDropdown?.setValue('default');
+									portugueseDropdown?.setValue('default');
 									this.plugin.settings.catalanVariety = undefined;
-									catalanVarietyDropdown?.setValue('default');
+									catalanDropdown?.setValue('default');
 								}
 								await this.plugin.saveSettings();
 							});
@@ -301,14 +302,13 @@ export class LTSettingsTab extends PluginSettingTab {
 					.catch(console.error);
 			});
 
-		containerEl.createEl('h3', { text: 'Language Varieties' });
-		containerEl.createEl('p', {
-			text: 'Some languages have varieties depending on the country they are spoken in.'
-		});
-
+		new Setting(containerEl)
+			.setName('Language varieties')
+			.setHeading()
+			.setDesc('Some languages have varieties depending on the country they are spoken in.');
 
 		new Setting(containerEl).setName('Interpret English as').addDropdown(component => {
-			englishVarietyDropdown = component;
+			englishDropdown = component;
 			component
 				.addOptions({
 					default: '---',
@@ -333,7 +333,7 @@ export class LTSettingsTab extends PluginSettingTab {
 		});
 
 		new Setting(containerEl).setName('Interpret German as').addDropdown(component => {
-			germanVarietyDropdown = component;
+			germanDropdown = component;
 			component
 				.addOptions({
 					default: '---',
@@ -355,7 +355,7 @@ export class LTSettingsTab extends PluginSettingTab {
 		});
 
 		new Setting(containerEl).setName('Interpret Portuguese as').addDropdown(component => {
-			portugueseVarietyDropdown = component;
+			portugueseDropdown = component;
 			component
 				.addOptions({
 					default: '---',
@@ -378,7 +378,7 @@ export class LTSettingsTab extends PluginSettingTab {
 		});
 
 		new Setting(containerEl).setName('Interpret Catalan as').addDropdown(component => {
-			catalanVarietyDropdown = component;
+			catalanDropdown = component;
 			component
 				.addOptions({
 					default: '---',
@@ -398,18 +398,19 @@ export class LTSettingsTab extends PluginSettingTab {
 				});
 		});
 
-		containerEl.createEl('h3', { text: 'Rule Categories' });
-		containerEl.createEl('p', { text: 'The Picky mode enables a lot of extra categories and rules. Additionally, you can enable or disable specific ones down below:' }, el => {
-			el.createEl('br');
-			el.createEl('a', {
-				text: 'Click here for a list of rules and categories',
-				href: 'https://community.languagetool.org/rule/list',
-				attr: { target: '_blank' },
-			});
-		});
+		new Setting(containerEl).setName('Rule categories').setHeading()
+			.setDesc(createFragment((frag) => {
+				frag.appendText('The picky mode enables a lot of extra categories and rules. Additionally, you can enable or disable specific rules down below.');
+				frag.createEl('br');
+				frag.createEl('a', {
+					text: 'Click here for a list of rules and categories',
+					href: 'https://community.languagetool.org/rule/list',
+					attr: { target: '_blank' },
+				});
+			}));
 
 		new Setting(containerEl)
-			.setName('Picky Mode')
+			.setName('Picky mode')
 			.setDesc(
 				'Provides more style and tonality suggestions, detects long or complex sentences, recognizes colloquialism and redundancies, proactively suggests synonyms for commonly overused words',
 			)
@@ -421,7 +422,7 @@ export class LTSettingsTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
-			.setName('Enabled Categories')
+			.setName('Enabled categories')
 			.setDesc('Comma-separated list of categories')
 			.addText(text =>
 				text
@@ -434,7 +435,7 @@ export class LTSettingsTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName('Disabled Categories')
+			.setName('Disabled categories')
 			.setDesc('Comma-separated list of categories')
 			.addText(text =>
 				text
@@ -447,7 +448,7 @@ export class LTSettingsTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName('Enabled Rules')
+			.setName('Enabled rules')
 			.setDesc('Comma-separated list of rules')
 			.addText(text =>
 				text
@@ -460,7 +461,7 @@ export class LTSettingsTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName('Disabled Rules')
+			.setName('Disabled rules')
 			.setDesc('Comma-separated list of rules')
 			.addText(text =>
 				text

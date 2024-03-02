@@ -43,7 +43,7 @@ export default class LanguageToolPlugin extends Plugin {
 
 	private registerCommands() {
 		this.addCommand({
-			id: 'ltcheck-text',
+			id: 'check',
 			name: 'Check Text',
 			editorCallback: (editor, view) => {
 				// @ts-expect-error, not typed
@@ -53,18 +53,16 @@ export default class LanguageToolPlugin extends Plugin {
 				});
 			},
 		});
-
 		this.addCommand({
-			id: 'ltautocheck-text',
+			id: 'toggle-auto-check',
 			name: 'Toggle Automatic Checking',
 			callback: async () => {
 				this.settings.shouldAutoCheck = !this.settings.shouldAutoCheck;
 				await this.saveSettings();
 			},
 		});
-
 		this.addCommand({
-			id: 'ltclear',
+			id: 'clear',
 			name: 'Clear Suggestions',
 			editorCallback: editor => {
 				// @ts-expect-error, not typed
@@ -74,41 +72,37 @@ export default class LanguageToolPlugin extends Plugin {
 				});
 			},
 		});
-
 		this.addCommand({
-			id: 'ltjump-to-next-suggestion',
+			id: 'next',
 			name: 'Jump to next Suggestion',
 			editorCheckCallback: (checking, editor) => {
 				// @ts-expect-error, not typed
 				const editorView = editor.cm as EditorView;
 				const cursorOffset = editor.posToOffset(editor.getCursor());
-				let firstMatch: { from: number; to: number } | null = null;
+				let firstMatch = null as { from: number; to: number } | null;
 				editorView.state.field(underlineField).between(cursorOffset + 1, Infinity, (from, to) => {
 					if (!firstMatch || firstMatch.from > from) {
 						firstMatch = { from, to };
 					}
 				});
 				if (checking) {
-					return Boolean(firstMatch);
+					return firstMatch != null;
 				}
-				if (!firstMatch) {
-					return;
+				if (firstMatch != null) {
+					editorView.dispatch({ selection: { anchor: firstMatch.from, head: firstMatch.to } });
 				}
-				// @ts-expect-error 2339
-				// ts cant handle that the variable gets assigned in a callback
-				editorView.dispatch({ selection: { anchor: firstMatch.from, head: firstMatch.to } });
 			},
 		});
-		this.addCommand(this.getApplySuggestionCommand(1));
-		this.addCommand(this.getApplySuggestionCommand(2));
-		this.addCommand(this.getApplySuggestionCommand(3));
-		this.addCommand(this.getApplySuggestionCommand(4));
-		this.addCommand(this.getApplySuggestionCommand(5));
+		this.addCommand(this.applySuggestionCommand(1));
+		this.addCommand(this.applySuggestionCommand(2));
+		this.addCommand(this.applySuggestionCommand(3));
+		this.addCommand(this.applySuggestionCommand(4));
+		this.addCommand(this.applySuggestionCommand(5));
 	}
 
-	private getApplySuggestionCommand(n: number): Command {
+	private applySuggestionCommand(n: number): Command {
 		return {
-			id: `ltaccept-suggestion-${n}`,
+			id: `accept-${n}`,
 			name: `Accept suggestion #${n} when the cursor is within a Language-Tool-Hint`,
 			editorCheckCallback(checking, editor) {
 				// @ts-expect-error, not typed
@@ -127,15 +121,12 @@ export default class LanguageToolPlugin extends Plugin {
 				});
 
 				// Check that there is exactly one match that has a replacement in the slot that is called.
-				const preconditionsSuccessfull =
-					matches.length === 1 && matches[0]?.value?.spec?.underline?.replacements?.length >= n;
+				const preconditions =
+					matches.length === 1 && matches[0].value.spec?.underline?.replacements?.length >= n;
 
-				if (checking) return preconditionsSuccessfull;
-
-				if (!preconditionsSuccessfull) {
-					console.error('Preconditions were not successfull to apply LT-suggestions.');
+				if (checking) return preconditions;
+				if (!preconditions)
 					return;
-				}
 
 				// At this point, the check must have been successful.
 				const { from, to, value } = matches[0];
@@ -155,7 +146,7 @@ export default class LanguageToolPlugin extends Plugin {
 	}
 
 	private registerMenuItems() {
-		this.app.workspace.on('editor-menu', (menu, editor, view) => {
+		this.registerEvent(this.app.workspace.on('editor-menu', (menu, editor, view) => {
 			if (!this.settings.synonyms) return;
 
 			// @ts-expect-error, not typed
@@ -171,7 +162,7 @@ export default class LanguageToolPlugin extends Plugin {
 			menu.addItem(item => {
 				item.setTitle('Synonyms');
 				item.setIcon('square-stack');
-				item.onClick(() => {
+				item.onClick(async () => {
 					let line = editorView.state.doc.lineAt(selection.from);
 
 					let prefix = line.text.slice(0, selection.from - line.from).lastIndexOf('.') + 1;
@@ -184,25 +175,24 @@ export default class LanguageToolPlugin extends Plugin {
 					let suffix = sentence.indexOf('.');
 					if (suffix !== -1) sentence = sentence.slice(0, suffix + 1);
 
-					synonyms(sentence, sel).then(synonyms => {
-						editorView.dispatch({
-							effects: [
-								addUnderline.of({
-									text: word,
-									from: selection.from,
-									to: selection.to,
-									title: 'Synonyms',
-									message: '',
-									categoryId: 'SYNONYMS',
-									ruleId: 'SYNONYMS',
-									replacements: synonyms,
-								})
-							]
-						});
+					let replacements = await synonyms(sentence, sel);
+					editorView.dispatch({
+						effects: [
+							addUnderline.of({
+								text: word,
+								from: selection.from,
+								to: selection.to,
+								title: 'Synonyms',
+								message: '',
+								categoryId: 'SYNONYMS',
+								ruleId: 'SYNONYMS',
+								replacements,
+							})
+						]
 					});
 				});
 			});
-		})
+		}));
 	}
 
 	public setStatusBarReady() {

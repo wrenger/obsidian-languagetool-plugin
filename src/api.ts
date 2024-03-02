@@ -1,5 +1,6 @@
 import * as Remark from 'annotatedtext-remark';
 import { LTSettings } from './settingsTab';
+import { RequestUrlResponse, requestUrl } from "obsidian";
 
 /** A typo or grammar issue detected by LanguageTool */
 export interface LTMatch {
@@ -89,27 +90,25 @@ export async function check(
 	if (settings.disabledRules)
 		params.disabledRules = settings.disabledRules;
 
-	let preferredVariants = [];
-	if (settings.englishVariety)
-		preferredVariants.push(settings.englishVariety);
-	if (settings.germanVariety)
-		preferredVariants.push(settings.germanVariety);
-	if (settings.portugueseVariety)
-		preferredVariants.push(settings.portugueseVariety);
-	if (settings.catalanVariety)
-		preferredVariants.push(settings.catalanVariety);
-	params.preferredVariants = preferredVariants.join(',');
+	params.preferredVariants = [
+		settings.englishVariety,
+		settings.germanVariety,
+		settings.portugueseVariety,
+		settings.catalanVariety
+	].filter(v => v).join(',');
 
 	if (settings.apikey && settings.username) {
 		params.username = settings.username;
 		params.apiKey = settings.apikey;
 	}
 
-	let res: Response;
+	let res: RequestUrlResponse;
 	try {
-		res = await fetch(`${settings.serverUrl}/v2/check`, {
+		res = await requestUrl({
+			url: `${settings.serverUrl}/v2/check`,
 			method: 'POST',
-			body: new URLSearchParams(params),
+			body: new URLSearchParams(params).toString(),
+			throw: true,
 			headers: {
 				'Content-Type': 'application/x-www-form-urlencoded',
 				Accept: 'application/json',
@@ -119,18 +118,11 @@ export async function check(
 		console.log(e);
 		throw new Error(`Request to LanguageTool failed: Please check your connection and server URL.\n${e}`);
 	}
-	if (!res.ok) {
-		throw new Error(`Request to LanguageTool failed: Unexpected response status: ${res.statusText}`);
-	}
+	if (res.json == null)
+		throw new Error(`Error processing response from LanguageTool.`);
 
-	let body: LTResponse;
-	try {
-		body = await res.json();
-	} catch (e) {
-		throw new Error(`Error processing response from LanguageTool server: ${e.message}`);
-	}
-
-	return body.matches?.map(match => {
+	let response = res.json as LTResponse;
+	return response.matches?.map(match => {
 		return {
 			text: text.slice(match.offset, match.offset + match.length),
 			from: offset + match.offset,
@@ -166,9 +158,10 @@ export async function synonyms(sentence: string, selection: { from: number; to: 
 		response_queue: "string"
 	};
 
-	let res: Response;
+	let res: RequestUrlResponse;
 	try {
-		res = await fetch(URL, {
+		res = await requestUrl({
+			url: URL,
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -176,23 +169,18 @@ export async function synonyms(sentence: string, selection: { from: number; to: 
 			body: JSON.stringify(request)
 		});
 	} catch (e) {
-		return Promise.reject(e);
-	}
-	if (!res.ok) {
-		return Promise.reject(new Error(`unexpected status ${res.status}`));
+		throw new Error(`Requesting synonyms failed\n${e}`);
 	}
 
-	let body: any;
-	try {
-		body = await res.json();
-	} catch (e) {
-		return Promise.reject(e);
+	if (res.json == null)
+		throw new Error(`Error processing response from LanguageTool.`);
+
+	let response = res.json;
+	if (response.message !== "OK"
+		|| response.data == undefined
+		|| !(response.data.suggestions instanceof Object)
+		|| !(response.data.suggestions[word] instanceof Array)) {
+		throw new Error("Invalid synonyms response");
 	}
-	if (body.message !== "OK"
-		|| body.data == undefined
-		|| !(body.data.suggestions instanceof Object)
-		|| !(body.data.suggestions[word] instanceof Array)) {
-		return Promise.reject(new Error("Invalid response from server"));
-	}
-	return body.data.suggestions[word] as string[];
+	return response.data.suggestions[word] as string[];
 }
