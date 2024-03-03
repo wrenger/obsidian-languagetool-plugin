@@ -5,6 +5,7 @@ import { DEFAULT_SETTINGS, LTSettings, LTSettingsTab } from './settingsTab';
 import { LTMatch, check, synonyms } from './api';
 import { buildUnderlineExtension } from './cm6/underlineExtension';
 import { LTRange, addUnderline, clearAllUnderlines, clearUnderlinesInRange, underlineField } from './cm6/underlineStateField';
+import { syntaxTree } from "@codemirror/language";
 
 export default class LanguageToolPlugin extends Plugin {
 	public settings: LTSettings;
@@ -265,14 +266,48 @@ export default class LanguageToolPlugin extends Plugin {
 			});
 	};
 
+	private increaseSelection(editor: EditorView, range: LTRange): LTRange {
+		// TODO: Find the actual block with a markdown parser like mdast-util-from-markdown
+
+		let tree = null;
+		if (range.from > 0) {
+			tree = syntaxTree(editor.state);
+			let node = tree.resolveInner(range.from, -1);
+			// Skip list indentation so that remark doesn't interpret this as code block
+			if (node.type.name.startsWith('list-')) {
+				range.from = node.from;
+			} else {
+				range.from = editor.state.doc.lineAt(range.from).from;
+			}
+		} else {
+			range.from = 0;
+		}
+
+		if (range.to < editor.state.doc.length) {
+			range.to = editor.state.doc.lineAt(range.to).to;
+		} else {
+			range.to = editor.state.doc.length;
+		}
+
+		return range;
+	}
+
 	public async runDetection(editor: EditorView, range?: LTRange): Promise<void> {
 		const selection = editor.state.selection.main;
 		if (!range && !selection.empty) {
 			range = { ...selection };
 		}
 
-		const offset = range ? range.from : 0;
-		const text = range ? editor.state.sliceDoc(range.from, range.to) : editor.state.sliceDoc(0);
+		let offset = 0;
+		let text = '';
+		if (range) {
+			range = this.increaseSelection(editor, range);
+			offset = range.from;
+			text = editor.state.sliceDoc(range.from, range.to);
+		} else {
+			text = editor.state.sliceDoc(0);
+		}
+
 		if (!text.trim())
 			return;
 
@@ -302,9 +337,12 @@ export default class LanguageToolPlugin extends Plugin {
 		if (matches) {
 			// TODO: Allow removing words from the dictionary
 			const spellcheckDictionary: string[] = (this.app.vault as any).getConfig('spellcheckDictionary') || [];
-			console.log(spellcheckDictionary);
 
 			for (const match of matches) {
+				// Fixes a bug where the match is outside the document
+				if (match.to > editor.state.doc.length)
+					continue;
+
 				// Ignore typos that are in the spellcheck dictionary
 				if (match.categoryId === 'TYPOS' && spellcheckDictionary.includes(match.text)) {
 					continue;

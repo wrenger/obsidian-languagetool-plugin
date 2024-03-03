@@ -15,17 +15,10 @@ export function buildAutoCheckHandler(plugin: LanguageToolPlugin): Extension {
 			maxRange = Math.max(maxRange, fromB, toB);
 		})
 
-		clearTimeout(debounceTimer);
-
 		const view = update.view;
+		clearTimeout(debounceTimer);
 		debounceTimer = window.setTimeout(() => {
-			const startLine = view.lineBlockAt(minRange);
-			const endLine = view.lineBlockAt(maxRange);
-
-			// TODO: Start at the beginning of a block (table start, list start, etc...)
-			// The codemirror syntax tree doesn't provide this info
-
-			plugin.runDetection(view, {from: startLine.from, to: endLine.to}).catch(e => {
+			plugin.runDetection(view, {from: minRange, to: maxRange}).catch(e => {
 				console.error(e);
 			});
 
