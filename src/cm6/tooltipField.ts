@@ -2,12 +2,12 @@ import { EditorView, Tooltip, showTooltip } from '@codemirror/view';
 import { StateField, EditorState } from '@codemirror/state';
 import { categoryCssClass } from '../helpers';
 import { setIcon } from 'obsidian';
-import LanguageToolPlugin from 'src/main';
+import { default as LanguageToolPlugin, SUGGESTIONS } from 'src/main';
 import { clearUnderlinesInRange, underlineField, clearMatchingUnderlines } from './underlineStateField';
 import { LTMatch } from "src/api";
 
 function constructTooltip(plugin: LanguageToolPlugin, view: EditorView, underline: LTMatch): HTMLDivElement {
-	const buttons = underline.replacements.filter(v => v.trim()).slice(0, 5);
+	const buttons = underline.replacements.slice(0, SUGGESTIONS);
 	const category = underline.categoryId;
 	const ruleId = underline.ruleId;
 
@@ -28,7 +28,7 @@ function constructTooltip(plugin: LanguageToolPlugin, view: EditorView, underlin
 			if (buttons.length) {
 				bottom.createDiv({ cls: 'lt-buttoncontainer' }, buttonContainer => {
 					for (const btnText of buttons) {
-						buttonContainer.createEl('button', { text: btnText }, button => {
+						buttonContainer.createEl('button', { text: btnText || "(delete)" }, button => {
 							button.onclick = () => {
 								view.dispatch({
 									changes: [

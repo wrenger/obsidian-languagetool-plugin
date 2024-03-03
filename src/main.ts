@@ -7,6 +7,8 @@ import { buildUnderlineExtension } from './cm6/underlineExtension';
 import { LTRange, addUnderline, clearAllUnderlines, clearUnderlinesInRange, underlineField } from './cm6/underlineStateField';
 import { syntaxTree } from "@codemirror/language";
 
+export const SUGGESTIONS = 5;
+
 export default class LanguageToolPlugin extends Plugin {
 	public settings: LTSettings;
 	private statusBarText: HTMLElement;
@@ -45,7 +47,7 @@ export default class LanguageToolPlugin extends Plugin {
 	private registerCommands() {
 		this.addCommand({
 			id: 'check',
-			name: 'Check Text',
+			name: 'Check text',
 			editorCallback: (editor, view) => {
 				// @ts-expect-error, not typed
 				const editorView = editor.cm as EditorView;
@@ -56,7 +58,7 @@ export default class LanguageToolPlugin extends Plugin {
 		});
 		this.addCommand({
 			id: 'toggle-auto-check',
-			name: 'Toggle Automatic Checking',
+			name: 'Toggle automatic checking',
 			callback: async () => {
 				this.settings.shouldAutoCheck = !this.settings.shouldAutoCheck;
 				await this.saveSettings();
@@ -64,7 +66,7 @@ export default class LanguageToolPlugin extends Plugin {
 		});
 		this.addCommand({
 			id: 'clear',
-			name: 'Clear Suggestions',
+			name: 'Clear suggestions',
 			editorCallback: editor => {
 				// @ts-expect-error, not typed
 				const editorView = editor.cm as EditorView;
@@ -75,7 +77,7 @@ export default class LanguageToolPlugin extends Plugin {
 		});
 		this.addCommand({
 			id: 'next',
-			name: 'Jump to next Suggestion',
+			name: 'Jump to next suggestion',
 			editorCheckCallback: (checking, editor) => {
 				// @ts-expect-error, not typed
 				const editorView = editor.cm as EditorView;
@@ -94,17 +96,15 @@ export default class LanguageToolPlugin extends Plugin {
 				}
 			},
 		});
-		this.addCommand(this.applySuggestionCommand(1));
-		this.addCommand(this.applySuggestionCommand(2));
-		this.addCommand(this.applySuggestionCommand(3));
-		this.addCommand(this.applySuggestionCommand(4));
-		this.addCommand(this.applySuggestionCommand(5));
+		for (let i = 1; i <= SUGGESTIONS; i++) {
+			this.addCommand(this.applySuggestionCommand(i));
+		}
 	}
 
 	private applySuggestionCommand(n: number): Command {
 		return {
 			id: `accept-${n}`,
-			name: `Accept suggestion #${n} when the cursor is within a Language-Tool-Hint`,
+			name: `Accept suggestion ${n} of the selected hint`,
 			editorCheckCallback(checking, editor) {
 				// @ts-expect-error, not typed
 				const editorView = editor.cm as EditorView;
