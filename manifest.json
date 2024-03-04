@@ -1,10 +1,10 @@
 {
 	"id": "languagetool",
 	"name": "LanguageTool Checker",
-	"version": "1.0.2",
+	"version": "1.0.3",
 	"minAppVersion": "1.5.0",
 	"description": "Inofficial plugin that integrates the LanguageTool spell and grammar checker into obsidian.",
-	"author": "Lars Wrenger and Clemens Ertle",
+	"author": "Lars Wrenger, Clemens Ertle",
 	"authorUrl": "https://github.com/wrenger",
 	"isDesktopOnly": false
 }
