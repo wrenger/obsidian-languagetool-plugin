@@ -954,6 +954,11 @@ json-stable-stringify-without-jsonify@^1.0.1:
   resolved "https://registry.yarnpkg.com/json-stable-stringify-without-jsonify/-/json-stable-stringify-without-jsonify-1.0.1.tgz#9db7b59496ad3f3cfef30a75142d2d930ad72651"
   integrity sha512-Bdboy+l7tA3OGW6FjyFHWkP5LuByj1Tk33Ljyq0axyzdk9//JSi2u3fP1QSmd1KNwq6VOKYGlAu87CisVir6Pw==
 
+jsonpath-plus@^8.0.0:
+  version "8.0.0"
+  resolved "https://registry.yarnpkg.com/jsonpath-plus/-/jsonpath-plus-8.0.0.tgz#1100b6f7f569f4d6e3ee04a79322b2a55d96ea12"
+  integrity sha512-+AOBHcQvRr8DcWVIkfOCCCLSlYgQuNZ+gFNqwkBrNpdUfdfkcrbO4ml3F587fWUMFOmoy6D9c+5wrghgjN3mbg==
+
 keyv@^4.5.3:
   version "4.5.4"
   resolved "https://registry.yarnpkg.com/keyv/-/keyv-4.5.4.tgz#a879a99e29452f942439f2a405e3af8b31d4de93"

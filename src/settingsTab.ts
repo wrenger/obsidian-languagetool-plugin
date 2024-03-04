@@ -8,6 +8,7 @@ import {
 	TextComponent,
 } from 'obsidian';
 import LanguageToolPlugin from './main';
+import { Language, SYNONYMS, languages } from "./api";
 
 const autoCheckDelayMax = 5000;
 const autoCheckDelayStep = 250;
@@ -41,12 +42,6 @@ function endpointFromUrl(url: string): EndpointType {
 	return 'custom';
 }
 
-export interface Language {
-	name: string;
-	code: string;
-	longCode: string;
-}
-
 export type EnglishVariety = 'en-US' | 'en-GB' | 'en-CA' | 'en-AU' | 'en-ZA' | 'en-NZ';
 export type GermanVariety = 'de-DE' | 'de-AT' | 'de-CH';
 export type PortugueseVariety = 'pt-BR' | 'pt-PT' | 'pt-AO' | 'pt-MZ';
@@ -59,7 +54,7 @@ export interface LTSettings {
 
 	shouldAutoCheck: boolean;
 	autoCheckDelay: number;
-	synonyms: boolean;
+	synonyms?: string;
 
 	motherTongue?: string;
 	staticLanguage?: string;
@@ -79,7 +74,6 @@ export const DEFAULT_SETTINGS: LTSettings = {
 	serverUrl: Object.keys(endpoints)[0],
 	autoCheckDelay: endpoints.standard.minDelay,
 	shouldAutoCheck: false,
-	synonyms: false,
 	pickyMode: false,
 };
 
@@ -98,16 +92,17 @@ export class LTSettingsTab extends PluginSettingTab {
 		delaySlider.setLimits(minAutoCheckDelay, autoCheckDelayMax, autoCheckDelayStep);
 	}
 
-	public async requestLanguages(): Promise<Language[]> {
+	private async getLanguages() {
 		if (this.languages) return this.languages;
-		const languages = await fetch(`${this.plugin.settings.serverUrl}/v2/languages`).then(res => res.json());
-		this.languages = languages;
-		return this.languages;
+		return this.languages = await languages(this.plugin.settings);
+
 	}
 
 	public display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
+
+		const settings = this.plugin.settings;
 
 		new Setting(containerEl)
 			.setName('Error logs')
@@ -119,7 +114,7 @@ export class LTSettingsTab extends PluginSettingTab {
 				});
 			})
 
-		let endpoint = endpointFromUrl(this.plugin.settings.serverUrl);
+		let endpoint = endpointFromUrl(settings.serverUrl);
 		let autoCheckDelaySlider: SliderComponent | null = null;
 
 		new Setting(containerEl)
@@ -141,10 +136,10 @@ export class LTSettingsTab extends PluginSettingTab {
 						.setValue(endpoint)
 						.onChange(async value => {
 							endpoint = value as EndpointType;
-							this.plugin.settings.serverUrl = endpoints[endpoint].url;
+							settings.serverUrl = endpoints[endpoint].url;
 
 							if (input)
-								input.setValue(this.plugin.settings.serverUrl)
+								input.setValue(settings.serverUrl)
 									.setDisabled(value !== 'custom');
 
 							if (autoCheckDelaySlider)
@@ -157,12 +152,12 @@ export class LTSettingsTab extends PluginSettingTab {
 					input = text;
 					text
 						.setPlaceholder('https://your-custom-url.com')
-						.setValue(this.plugin.settings.serverUrl)
+						.setValue(settings.serverUrl)
 						.setDisabled(endpoint !== 'custom')
 						.onChange(async value => {
-							this.plugin.settings.serverUrl = value.replace(/\/v2\/check\/$/, '').replace(/\/$/, '');
+							settings.serverUrl = value.replace(/\/v2\/check\/$/, '').replace(/\/$/, '');
 
-							endpoint = endpointFromUrl(this.plugin.settings.serverUrl);
+							endpoint = endpointFromUrl(settings.serverUrl);
 							if (endpoint !== 'custom') {
 								dropdown?.setValue(endpoint);
 								input?.setDisabled(true);
@@ -178,9 +173,9 @@ export class LTSettingsTab extends PluginSettingTab {
 			.addText(text =>
 				text
 					.setPlaceholder('peterlustig@example.com')
-					.setValue(this.plugin.settings.username || '')
+					.setValue(settings.username || '')
 					.onChange(async value => {
-						this.plugin.settings.username = value.replace(/\s+/g, '');
+						settings.username = value.replace(/\s+/g, '');
 						await this.plugin.saveSettings();
 					}),
 			);
@@ -194,9 +189,9 @@ export class LTSettingsTab extends PluginSettingTab {
 				});
 			}))
 			.addText(text =>
-				text.setValue(this.plugin.settings.apikey || '').onChange(async value => {
-					this.plugin.settings.apikey = value.replace(/\s+/g, '');
-					if (this.plugin.settings.apikey && endpoint !== 'premium') {
+				text.setValue(settings.apikey || '').onChange(async value => {
+					settings.apikey = value.replace(/\s+/g, '');
+					if (settings.apikey && endpoint !== 'premium') {
 						new Notice('You have entered an API Key but you are not using the Premium Endpoint');
 					}
 					await this.plugin.saveSettings();
@@ -206,8 +201,8 @@ export class LTSettingsTab extends PluginSettingTab {
 			.setName('Auto check text')
 			.setDesc('Check text as you type')
 			.addToggle(component => {
-				component.setValue(this.plugin.settings.shouldAutoCheck).onChange(async value => {
-					this.plugin.settings.shouldAutoCheck = value;
+				component.setValue(settings.shouldAutoCheck).onChange(async value => {
+					settings.shouldAutoCheck = value;
 					await this.plugin.saveSettings();
 				});
 			});
@@ -219,29 +214,48 @@ export class LTSettingsTab extends PluginSettingTab {
 
 				this.configureAutoCheckDelaySlider(component, endpoint);
 				component
-					.setValue(this.plugin.settings.autoCheckDelay)
+					.setValue(settings.autoCheckDelay)
 					.onChange(async value => {
-						this.plugin.settings.autoCheckDelay = value;
+						settings.autoCheckDelay = value;
 						await this.plugin.saveSettings();
 					})
 					.setDynamicTooltip();
 			});
-		new Setting(containerEl)
-			.setName('Find synonyms')
-			.setDesc(createFragment((frag) => {
-				frag.appendText('Enables the context menu for synonyms fetched from');
-				frag.createEl('br');
+
+		function synonymsDesc(frag: DocumentFragment): void {
+			frag.appendText('Enables the context menu for synonyms fetched from');
+			frag.createEl('br');
+			if (settings.synonyms != null) {
+				let api = SYNONYMS[settings.synonyms];
+				if (!api) {
+					frag.appendText(' (unknown API)');
+					return
+				}
 				frag.createEl('a', {
-					text: 'https://qb-grammar-en.languagetool.org/phrasal-paraphraser/subscribe',
-					href: 'https://qb-grammar-en.languagetool.org/phrasal-paraphraser/subscribe',
+					text: api.url,
+					href: api.url,
 					attr: { target: '_blank' },
 				});
-			}))
-			.addToggle(component => {
-				component.setValue(this.plugin.settings.synonyms).onChange(async value => {
-					this.plugin.settings.synonyms = value;
-					await this.plugin.saveSettings();
-				});
+			} else {
+				frag.appendText('(none)');
+			}
+		}
+
+		let synonyms = new Setting(containerEl)
+			.setName('Find synonyms')
+			.setDesc(createFragment(synonymsDesc))
+		synonyms
+			.addDropdown(component => {
+				component.addOption('none', '---');
+				for (const lang of Object.keys(SYNONYMS)) {
+					component.addOption(lang, lang);
+				}
+				component.setValue(settings.synonyms ?? 'none')
+					.onChange(async value => {
+						settings.synonyms = value !== "none" ? value : undefined;
+						await this.plugin.saveSettings();
+						synonyms.setDesc(createFragment(synonymsDesc));
+					});
 			});
 
 		new Setting(containerEl)
@@ -252,13 +266,17 @@ export class LTSettingsTab extends PluginSettingTab {
 			.setName('Mother tongue')
 			.setDesc('Set mother tongue if you want to be warned about false friends when writing in other languages. This setting will also be used for automatic language detection.')
 			.addDropdown(component => {
-				this.requestLanguages()
+				this.getLanguages()
 					.then(languages => {
 						component
 							.addOption('none', '---')
-							.addOptions(Object.fromEntries(languages.map(v => [v.longCode, v.name])))
+							.addOptions(Object.fromEntries(
+								// only languages that are not dialects
+								languages.filter(v => v.longCode == v.code).map(v => [v.longCode, v.name])
+							))
+							.setValue(settings.motherTongue ?? 'none')
 							.onChange(async value => {
-								this.plugin.settings.motherTongue = value !== "none" ? value : undefined;
+								settings.motherTongue = value !== "none" ? value : undefined;
 								await this.plugin.saveSettings();
 							});
 					})
@@ -278,22 +296,22 @@ export class LTSettingsTab extends PluginSettingTab {
 			)
 			.addDropdown(component => {
 				staticLanguageComponent = component;
-				this.requestLanguages()
+				this.getLanguages()
 					.then(languages => {
 						component
 							.addOption('auto', 'Auto Detect')
 							.addOptions(Object.fromEntries(languages.map(v => [v.longCode, v.name])))
-							.setValue(this.plugin.settings.staticLanguage ?? 'auto')
+							.setValue(settings.staticLanguage ?? 'auto')
 							.onChange(async value => {
-								this.plugin.settings.staticLanguage = value !== "auto" ? value : undefined;
+								settings.staticLanguage = value !== "auto" ? value : undefined;
 								if (value !== 'auto') {
-									this.plugin.settings.englishVariety = undefined;
+									settings.englishVariety = undefined;
 									englishDropdown?.setValue('default');
-									this.plugin.settings.germanVariety = undefined;
+									settings.germanVariety = undefined;
 									germanDropdown?.setValue('default');
-									this.plugin.settings.portugueseVariety = undefined;
+									settings.portugueseVariety = undefined;
 									portugueseDropdown?.setValue('default');
-									this.plugin.settings.catalanVariety = undefined;
+									settings.catalanVariety = undefined;
 									catalanDropdown?.setValue('default');
 								}
 								await this.plugin.saveSettings();
@@ -319,14 +337,14 @@ export class LTSettingsTab extends PluginSettingTab {
 					'en-ZA': 'English (South Africa)',
 					'en-NZ': 'English (New Zealand)',
 				})
-				.setValue(this.plugin.settings.englishVariety ?? 'default')
+				.setValue(settings.englishVariety ?? 'default')
 				.onChange(async value => {
 					if (value === 'default') {
-						this.plugin.settings.englishVariety = undefined;
+						settings.englishVariety = undefined;
 					} else {
-						this.plugin.settings.staticLanguage = 'auto';
+						settings.staticLanguage = 'auto';
 						staticLanguageComponent?.setValue('auto');
-						this.plugin.settings.englishVariety = value as EnglishVariety;
+						settings.englishVariety = value as EnglishVariety;
 					}
 					await this.plugin.saveSettings();
 				});
@@ -341,14 +359,14 @@ export class LTSettingsTab extends PluginSettingTab {
 					'de-CH': 'German (Switzerland)',
 					'de-AT': 'German (Austria)',
 				})
-				.setValue(this.plugin.settings.germanVariety ?? 'default')
+				.setValue(settings.germanVariety ?? 'default')
 				.onChange(async value => {
 					if (value === 'default') {
-						this.plugin.settings.germanVariety = undefined;
+						settings.germanVariety = undefined;
 					} else {
-						this.plugin.settings.staticLanguage = 'auto';
+						settings.staticLanguage = 'auto';
 						staticLanguageComponent?.setValue('auto');
-						this.plugin.settings.germanVariety = value as GermanVariety;
+						settings.germanVariety = value as GermanVariety;
 					}
 					await this.plugin.saveSettings();
 				});
@@ -364,14 +382,14 @@ export class LTSettingsTab extends PluginSettingTab {
 					'pt-AO': 'Portuguese (Angola)',
 					'pt-MZ': 'Portuguese (Mozambique)',
 				})
-				.setValue(this.plugin.settings.portugueseVariety ?? 'default')
+				.setValue(settings.portugueseVariety ?? 'default')
 				.onChange(async value => {
 					if (value === 'default') {
-						this.plugin.settings.portugueseVariety = undefined;
+						settings.portugueseVariety = undefined;
 					} else {
-						this.plugin.settings.staticLanguage = 'auto';
+						settings.staticLanguage = 'auto';
 						staticLanguageComponent?.setValue('auto');
-						this.plugin.settings.portugueseVariety = value as PortugueseVariety;
+						settings.portugueseVariety = value as PortugueseVariety;
 					}
 					await this.plugin.saveSettings();
 				});
@@ -385,14 +403,14 @@ export class LTSettingsTab extends PluginSettingTab {
 					'ca-ES': 'Catalan',
 					'ca-ES-valencia': 'Catalan (Valencian)',
 				})
-				.setValue(this.plugin.settings.catalanVariety ?? 'default')
+				.setValue(settings.catalanVariety ?? 'default')
 				.onChange(async value => {
 					if (value === 'default') {
-						this.plugin.settings.catalanVariety = undefined;
+						settings.catalanVariety = undefined;
 					} else {
-						this.plugin.settings.staticLanguage = 'auto';
+						settings.staticLanguage = 'auto';
 						staticLanguageComponent?.setValue('auto');
-						this.plugin.settings.catalanVariety = value as CatalanVariety;
+						settings.catalanVariety = value as CatalanVariety;
 					}
 					await this.plugin.saveSettings();
 				});
@@ -415,8 +433,8 @@ export class LTSettingsTab extends PluginSettingTab {
 				'Provides more style and tonality suggestions, detects long or complex sentences, recognizes colloquialism and redundancies, proactively suggests synonyms for commonly overused words',
 			)
 			.addToggle(component => {
-				component.setValue(this.plugin.settings.pickyMode).onChange(async value => {
-					this.plugin.settings.pickyMode = value;
+				component.setValue(settings.pickyMode).onChange(async value => {
+					settings.pickyMode = value;
 					await this.plugin.saveSettings();
 				});
 			});
@@ -427,9 +445,9 @@ export class LTSettingsTab extends PluginSettingTab {
 			.addText(text =>
 				text
 					.setPlaceholder('CATEGORY_1,CATEGORY_2')
-					.setValue(this.plugin.settings.enabledCategories ?? '')
+					.setValue(settings.enabledCategories ?? '')
 					.onChange(async value => {
-						this.plugin.settings.enabledCategories = value.replace(/\s+/g, '');
+						settings.enabledCategories = value.replace(/\s+/g, '');
 						await this.plugin.saveSettings();
 					}),
 			);
@@ -440,9 +458,9 @@ export class LTSettingsTab extends PluginSettingTab {
 			.addText(text =>
 				text
 					.setPlaceholder('CATEGORY_1,CATEGORY_2')
-					.setValue(this.plugin.settings.disabledCategories ?? '')
+					.setValue(settings.disabledCategories ?? '')
 					.onChange(async value => {
-						this.plugin.settings.disabledCategories = value.replace(/\s+/g, '');
+						settings.disabledCategories = value.replace(/\s+/g, '');
 						await this.plugin.saveSettings();
 					}),
 			);
@@ -453,9 +471,9 @@ export class LTSettingsTab extends PluginSettingTab {
 			.addText(text =>
 				text
 					.setPlaceholder('RULE_1,RULE_2')
-					.setValue(this.plugin.settings.enabledRules ?? '')
+					.setValue(settings.enabledRules ?? '')
 					.onChange(async value => {
-						this.plugin.settings.enabledRules = value.replace(/\s+/g, '');
+						settings.enabledRules = value.replace(/\s+/g, '');
 						await this.plugin.saveSettings();
 					}),
 			);
@@ -466,9 +484,9 @@ export class LTSettingsTab extends PluginSettingTab {
 			.addText(text =>
 				text
 					.setPlaceholder('RULE_1,RULE_2')
-					.setValue(this.plugin.settings.disabledRules ?? '')
+					.setValue(settings.disabledRules ?? '')
 					.onChange(async value => {
-						this.plugin.settings.disabledRules = value.replace(/\s+/g, '');
+						settings.disabledRules = value.replace(/\s+/g, '');
 						await this.plugin.saveSettings();
 					}),
 			);

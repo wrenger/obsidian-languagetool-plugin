@@ -43,6 +43,7 @@
         "typescript": "^5.3.3"
     },
     "dependencies": {
-        "annotatedtext-remark": "^1.0.8"
+        "annotatedtext-remark": "^1.0.8",
+        "jsonpath-plus": "^8.0.0"
     }
 }

@@ -2,7 +2,7 @@ import { Command, MarkdownView, Menu, Notice, Plugin, setIcon } from 'obsidian';
 import { Decoration, EditorView } from '@codemirror/view';
 import { StateEffect } from '@codemirror/state';
 import { DEFAULT_SETTINGS, LTSettings, LTSettingsTab } from './settingsTab';
-import { LTMatch, check, synonyms } from './api';
+import { LTMatch, check, SYNONYMS } from './api';
 import { buildUnderlineExtension } from './cm6/underlineExtension';
 import { LTRange, addUnderline, clearAllUnderlines, clearUnderlinesInRange, underlineField } from './cm6/underlineStateField';
 import { syntaxTree } from "@codemirror/language";
@@ -148,7 +148,7 @@ export default class LanguageToolPlugin extends Plugin {
 
 	private registerMenuItems() {
 		this.registerEvent(this.app.workspace.on('editor-menu', (menu, editor, view) => {
-			if (!this.settings.synonyms) return;
+			if (!this.settings.synonyms || !(this.settings.synonyms in SYNONYMS)) return;
 
 			// @ts-expect-error, not typed
 			const editorView = editor.cm as EditorView;
@@ -164,6 +164,8 @@ export default class LanguageToolPlugin extends Plugin {
 				item.setTitle('Synonyms');
 				item.setIcon('square-stack');
 				item.onClick(async () => {
+					if (!this.settings.synonyms || !(this.settings.synonyms in SYNONYMS)) return;
+
 					let line = editorView.state.doc.lineAt(selection.from);
 
 					let prefix = line.text.slice(0, selection.from - line.from).lastIndexOf('.') + 1;
@@ -176,7 +178,10 @@ export default class LanguageToolPlugin extends Plugin {
 					let suffix = sentence.indexOf('.');
 					if (suffix !== -1) sentence = sentence.slice(0, suffix + 1);
 
-					let replacements = await synonyms(sentence, sel);
+					let api = SYNONYMS[this.settings.synonyms];
+					if (!api) return;
+
+					let replacements = await api.query(sentence, sel);
 					editorView.dispatch({
 						effects: [
 							addUnderline.of({
