@@ -18,6 +18,7 @@
 
 .lt-underline.lt-minor {
   text-decoration: wavy underline var(--lt-minor);
+  -webkit-text-decoration: wavy underline var(--lt-minor);
   &:hover {
     background-color: color-mix(in srgb, var(--lt-minor), transparent 80%);
   }
@@ -25,6 +26,7 @@
 
 .lt-underline.lt-major {
   text-decoration: wavy underline var(--lt-major);
+  -webkit-text-decoration: wavy underline var(--lt-major);
   &:hover {
     background-color: color-mix(in srgb, var(--lt-major), transparent 80%);
   }
@@ -32,6 +34,7 @@
 
 .lt-underline.lt-style {
   text-decoration: wavy underline var(--lt-style);
+  -webkit-text-decoration: wavy underline var(--lt-style);
   &:hover {
     background-color: color-mix(in srgb, var(--lt-style), transparent 80%);
   }
@@ -68,7 +71,7 @@
   transition-delay: 0.5s;
 }
 
-.lt-buttoncontainer{
+.lt-buttoncontainer {
   &:not(:empty) {
     padding-top: 10px;
   }
@@ -150,6 +153,7 @@
 .lt-status-bar-check-icon {
   display: block;
   text-decoration: underline dotted;
+  -webkit-text-decoration: underline dotted;
 }
 
 .lt-ignore-btn {
@@ -172,12 +176,15 @@
 
 .lt-minor > .lt-title > span {
   text-decoration: underline 2px var(--lt-minor);
+  -webkit-text-decoration: underline 2px var(--lt-minor);
 }
 .lt-major > .lt-title > span {
   text-decoration: underline 2px var(--lt-major);
+  -webkit-text-decoration: underline 2px var(--lt-major);
 }
 .lt-style > .lt-title > span {
   text-decoration: underline 2px var(--lt-style);
+  -webkit-text-decoration: underline 2px var(--lt-style);
 }
 
 .lt-loading > svg {
