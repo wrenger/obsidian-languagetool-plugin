@@ -2,7 +2,11 @@
 
 This plugin for [Obsidian.md](https://obsidian.md) integrates [LanguageTool](https://languagetool.org/) to provide advanced grammar and spellchecking.
 
-> This is a fork of the original [obsidian-languagetool-plugin](https://github.com/Clemens-E/obsidian-languagetool-plugin).
+> This is a fork of the original [obsidian-languagetool-plugin](https://github.com/Clemens-E/obsidian-languagetool-plugin), with the following changes:
+> - Added support for synonyms and mother tongue
+> - Add tooltip button for disabling rules
+> - Remove old code and clean up the codebase, following Obsidian's best practices
+> - Fix multiple bugs and freezes
 
 Note: if you are worried about the privacy of your notes, you should self-host languagetool locally on your PC or on a server: [Docker Image](https://hub.docker.com/r/erikvl87/languagetool)
 
