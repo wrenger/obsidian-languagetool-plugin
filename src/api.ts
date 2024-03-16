@@ -1,5 +1,5 @@
 import * as Remark from 'annotatedtext-remark';
-import { LTSettings } from './settingsTab';
+import { LTSettings } from './settings';
 import { RequestUrlResponse, requestUrl } from "obsidian";
 import { JSONPath } from "jsonpath-plus";
 
@@ -68,12 +68,7 @@ export async function check(
 	if (settings.disabledRules)
 		params.disabledRules = settings.disabledRules;
 
-	params.preferredVariants = [
-		settings.englishVariety,
-		settings.germanVariety,
-		settings.portugueseVariety,
-		settings.catalanVariety
-	].filter(v => v).join(',');
+	params.preferredVariants = Object.values(settings.languageVariety).join(',');
 
 	if (settings.apikey && settings.username) {
 		params.username = settings.username;
@@ -124,7 +119,7 @@ export interface Language {
 
 export async function languages(settings: LTSettings): Promise<Language[]> {
 	if (this.languages) return this.languages;
-	const languages = await requestUrl({url: `${settings.serverUrl}/v2/languages`}).json;
+	const languages = await requestUrl({ url: `${settings.serverUrl}/v2/languages` }).json;
 	if (languages == null || !(languages instanceof Array))
 		throw new Error(`Error processing response from LanguageTool.`);
 	return languages as Language[];

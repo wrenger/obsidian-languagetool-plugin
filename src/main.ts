@@ -1,7 +1,7 @@
 import { Command, MarkdownView, Menu, Notice, Plugin, setIcon } from 'obsidian';
 import { Decoration, EditorView } from '@codemirror/view';
 import { StateEffect } from '@codemirror/state';
-import { DEFAULT_SETTINGS, LTSettings, LTSettingsTab } from './settingsTab';
+import { DEFAULT_SETTINGS, LTSettings, LTSettingsTab } from './settings';
 import { LTMatch, check, SYNONYMS } from './api';
 import { buildUnderlineExtension } from './cm6/underlineExtension';
 import { LTRange, addUnderline, clearAllUnderlines, clearUnderlinesInRange, underlineField } from './cm6/underlineStateField';

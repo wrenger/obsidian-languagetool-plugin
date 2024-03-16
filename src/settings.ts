@@ -27,7 +27,7 @@ class Endpoint {
 	}
 }
 
-/** See https://languagetool.org/http-api/swagger-ui */
+/** See https://languagetool.org/http-api/swagger-ui/# */
 const endpoints = {
 	standard: new Endpoint('https://api.languagetool.org', 20),
 	premium: new Endpoint('https://api.languagetoolplus.com', 80),
@@ -42,11 +42,6 @@ function endpointFromUrl(url: string): EndpointType {
 	return 'custom';
 }
 
-export type EnglishVariety = 'en-US' | 'en-GB' | 'en-CA' | 'en-AU' | 'en-ZA' | 'en-NZ';
-export type GermanVariety = 'de-DE' | 'de-AT' | 'de-CH';
-export type PortugueseVariety = 'pt-BR' | 'pt-PT' | 'pt-AO' | 'pt-MZ';
-export type CatalanVariety = 'ca-ES' | 'ca-ES-valencia';
-
 export interface LTSettings {
 	serverUrl: string;
 	apikey?: string;
@@ -58,10 +53,7 @@ export interface LTSettings {
 
 	motherTongue?: string;
 	staticLanguage?: string;
-	englishVariety?: EnglishVariety;
-	germanVariety?: GermanVariety;
-	portugueseVariety?: PortugueseVariety;
-	catalanVariety?: CatalanVariety;
+	languageVariety: Record<string, string>;
 
 	pickyMode: boolean;
 	enabledCategories?: string;
@@ -74,28 +66,55 @@ export const DEFAULT_SETTINGS: LTSettings = {
 	serverUrl: Object.keys(endpoints)[0],
 	autoCheckDelay: endpoints.standard.minDelay,
 	shouldAutoCheck: false,
+	languageVariety: {},
 	pickyMode: false,
 };
 
 export class LTSettingsTab extends PluginSettingTab {
 	private readonly plugin: LanguageToolPlugin;
-	private languages: Language[];
+	private languages: Promise<Language[]> | null;
+
 	public constructor(app: App, plugin: LanguageToolPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
 
-	private configureAutoCheckDelaySlider(delaySlider: SliderComponent, value: EndpointType) {
+	private configureCheckDelay(slider: SliderComponent, value: EndpointType): void {
 		const minAutoCheckDelay = endpoints[value].minDelay;
 		this.plugin.settings.autoCheckDelay = Math.clamp(
 			this.plugin.settings.autoCheckDelay, minAutoCheckDelay, autoCheckDelayMax);
-		delaySlider.setLimits(minAutoCheckDelay, autoCheckDelayMax, autoCheckDelayStep);
+		slider.setLimits(minAutoCheckDelay, autoCheckDelayMax, autoCheckDelayStep);
 	}
 
-	private async getLanguages() {
-		if (this.languages) return this.languages;
-		return this.languages = await languages(this.plugin.settings);
+	private async getLanguages(): Promise<Language[]> {
+		if (this.languages == null) this.languages = languages(this.plugin.settings);
+		return await this.languages;
+	}
 
+	private async getLanguageVariants(code: string): Promise<Record<string, string>> {
+		let languages = await this.getLanguages()
+		languages = languages.filter(v => v.code === code).filter(v => v.longCode !== v.code);
+		return Object.fromEntries(languages.map(v => [v.longCode, v.name]));
+	}
+
+	private async configureLanguageVariants(dropdown: DropdownComponent, code: string, staticLanguageComponent: DropdownComponent | null): Promise<void> {
+		let settings = this.plugin.settings;
+		dropdown
+			.addOptions({
+				default: '---',
+				... await this.getLanguageVariants(code),
+			})
+			.setValue(settings.languageVariety[code] ?? 'default')
+			.onChange(async value => {
+				if (value === 'default') {
+					delete settings.languageVariety[code];
+				} else {
+					settings.staticLanguage = 'auto';
+					staticLanguageComponent?.setValue('auto');
+					settings.languageVariety[code] = value;
+				}
+				await this.plugin.saveSettings();
+			});
 	}
 
 	public display(): void {
@@ -143,7 +162,7 @@ export class LTSettingsTab extends PluginSettingTab {
 									.setDisabled(value !== 'custom');
 
 							if (autoCheckDelaySlider)
-								this.configureAutoCheckDelaySlider(autoCheckDelaySlider, endpoint);
+								this.configureCheckDelay(autoCheckDelaySlider, endpoint);
 
 							await this.plugin.saveSettings();
 						});
@@ -212,7 +231,7 @@ export class LTSettingsTab extends PluginSettingTab {
 			.addSlider(component => {
 				autoCheckDelaySlider = component;
 
-				this.configureAutoCheckDelaySlider(component, endpoint);
+				this.configureCheckDelay(component, endpoint);
 				component
 					.setValue(settings.autoCheckDelay)
 					.onChange(async value => {
@@ -305,13 +324,11 @@ export class LTSettingsTab extends PluginSettingTab {
 							.onChange(async value => {
 								settings.staticLanguage = value !== "auto" ? value : undefined;
 								if (value !== 'auto') {
-									settings.englishVariety = undefined;
+									settings.languageVariety = {};
+
 									englishDropdown?.setValue('default');
-									settings.germanVariety = undefined;
 									germanDropdown?.setValue('default');
-									settings.portugueseVariety = undefined;
 									portugueseDropdown?.setValue('default');
-									settings.catalanVariety = undefined;
 									catalanDropdown?.setValue('default');
 								}
 								await this.plugin.saveSettings();
@@ -325,95 +342,24 @@ export class LTSettingsTab extends PluginSettingTab {
 			.setHeading()
 			.setDesc('Some languages have varieties depending on the country they are spoken in.');
 
-		new Setting(containerEl).setName('Interpret English as').addDropdown(component => {
+		new Setting(containerEl).setName('Interpret English as').addDropdown(async component => {
 			englishDropdown = component;
-			component
-				.addOptions({
-					default: '---',
-					'en-US': 'English (US)',
-					'en-GB': 'English (British)',
-					'en-CA': 'English (Canada)',
-					'en-AU': 'English (Australia)',
-					'en-ZA': 'English (South Africa)',
-					'en-NZ': 'English (New Zealand)',
-				})
-				.setValue(settings.englishVariety ?? 'default')
-				.onChange(async value => {
-					if (value === 'default') {
-						settings.englishVariety = undefined;
-					} else {
-						settings.staticLanguage = 'auto';
-						staticLanguageComponent?.setValue('auto');
-						settings.englishVariety = value as EnglishVariety;
-					}
-					await this.plugin.saveSettings();
-				});
+			this.configureLanguageVariants(component, 'en', staticLanguageComponent);
 		});
 
-		new Setting(containerEl).setName('Interpret German as').addDropdown(component => {
+		new Setting(containerEl).setName('Interpret German as').addDropdown(async component => {
 			germanDropdown = component;
-			component
-				.addOptions({
-					default: '---',
-					'de-DE': 'German (Germany)',
-					'de-CH': 'German (Switzerland)',
-					'de-AT': 'German (Austria)',
-				})
-				.setValue(settings.germanVariety ?? 'default')
-				.onChange(async value => {
-					if (value === 'default') {
-						settings.germanVariety = undefined;
-					} else {
-						settings.staticLanguage = 'auto';
-						staticLanguageComponent?.setValue('auto');
-						settings.germanVariety = value as GermanVariety;
-					}
-					await this.plugin.saveSettings();
-				});
+			this.configureLanguageVariants(component, 'de', staticLanguageComponent);
 		});
 
-		new Setting(containerEl).setName('Interpret Portuguese as').addDropdown(component => {
+		new Setting(containerEl).setName('Interpret Portuguese as').addDropdown(async component => {
 			portugueseDropdown = component;
-			component
-				.addOptions({
-					default: '---',
-					'pt-BR': 'Portuguese (Brazil)',
-					'pt-PT': 'Portuguese (Portugal)',
-					'pt-AO': 'Portuguese (Angola)',
-					'pt-MZ': 'Portuguese (Mozambique)',
-				})
-				.setValue(settings.portugueseVariety ?? 'default')
-				.onChange(async value => {
-					if (value === 'default') {
-						settings.portugueseVariety = undefined;
-					} else {
-						settings.staticLanguage = 'auto';
-						staticLanguageComponent?.setValue('auto');
-						settings.portugueseVariety = value as PortugueseVariety;
-					}
-					await this.plugin.saveSettings();
-				});
+			this.configureLanguageVariants(component, 'pt', staticLanguageComponent);
 		});
 
-		new Setting(containerEl).setName('Interpret Catalan as').addDropdown(component => {
+		new Setting(containerEl).setName('Interpret Catalan as').addDropdown(async component => {
 			catalanDropdown = component;
-			component
-				.addOptions({
-					default: '---',
-					'ca-ES': 'Catalan',
-					'ca-ES-valencia': 'Catalan (Valencian)',
-				})
-				.setValue(settings.catalanVariety ?? 'default')
-				.onChange(async value => {
-					if (value === 'default') {
-						settings.catalanVariety = undefined;
-					} else {
-						settings.staticLanguage = 'auto';
-						staticLanguageComponent?.setValue('auto');
-						settings.catalanVariety = value as CatalanVariety;
-					}
-					await this.plugin.saveSettings();
-				});
+			this.configureLanguageVariants(component, 'ca', staticLanguageComponent);
 		});
 
 		new Setting(containerEl).setName('Rule categories').setHeading()
