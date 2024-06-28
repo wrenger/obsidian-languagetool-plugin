@@ -303,10 +303,12 @@ export class LTSettingsTab extends PluginSettingTab {
 			});
 
 		let staticLanguageComponent: DropdownComponent | null;
-		let englishDropdown: DropdownComponent | null;
-		let germanDropdown: DropdownComponent | null;
-		let portugueseDropdown: DropdownComponent | null;
-		let catalanDropdown: DropdownComponent | null;
+		let langVariants: { [key: string]: { name: string, dropdown: DropdownComponent | null } } = {
+			en: { name: "English", dropdown: null },
+			de: { name: "German", dropdown: null },
+			pt: { name: "Portuguese", dropdown: null },
+			ca: { name: "Catalan", dropdown: null },
+		};
 
 		new Setting(containerEl)
 			.setName('Static language')
@@ -326,10 +328,9 @@ export class LTSettingsTab extends PluginSettingTab {
 								if (value !== 'auto') {
 									settings.languageVariety = {};
 
-									englishDropdown?.setValue('default');
-									germanDropdown?.setValue('default');
-									portugueseDropdown?.setValue('default');
-									catalanDropdown?.setValue('default');
+									for (const l of Object.values(langVariants)) {
+										l.dropdown?.setValue('default');
+									}
 								}
 								await this.plugin.saveSettings();
 							});
@@ -342,25 +343,12 @@ export class LTSettingsTab extends PluginSettingTab {
 			.setHeading()
 			.setDesc('Some languages have varieties depending on the country they are spoken in.');
 
-		new Setting(containerEl).setName('Interpret English as').addDropdown(async component => {
-			englishDropdown = component;
-			this.configureLanguageVariants(component, 'en', staticLanguageComponent);
-		});
-
-		new Setting(containerEl).setName('Interpret German as').addDropdown(async component => {
-			germanDropdown = component;
-			this.configureLanguageVariants(component, 'de', staticLanguageComponent);
-		});
-
-		new Setting(containerEl).setName('Interpret Portuguese as').addDropdown(async component => {
-			portugueseDropdown = component;
-			this.configureLanguageVariants(component, 'pt', staticLanguageComponent);
-		});
-
-		new Setting(containerEl).setName('Interpret Catalan as').addDropdown(async component => {
-			catalanDropdown = component;
-			this.configureLanguageVariants(component, 'ca', staticLanguageComponent);
-		});
+		for (let [id, lang] of Object.entries(langVariants)) {
+			new Setting(containerEl).setName(`Interpret ${lang.name} as`).addDropdown(async component => {
+				lang.dropdown = component;
+				this.configureLanguageVariants(component, id, staticLanguageComponent);
+			});
+		}
 
 		new Setting(containerEl).setName('Rule categories').setHeading()
 			.setDesc(createFragment((frag) => {

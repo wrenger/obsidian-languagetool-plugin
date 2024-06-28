@@ -205,14 +205,14 @@ export const SYNONYMS: { [key: string]: SynonymApi | undefined } = {
 };
 
 function jsonPath<T>(path: string, json: Object): T {
-	let res = JSONPath({ path: path, json: json, wrap: false, preventEval: true });
+	let res = JSONPath({ path: path, json: json, wrap: false, eval: false });
 	if (res == null || res instanceof Array) {
 		throw new Error(`JSONPath failed`);
 	}
 	return res as T;
 }
 function jsonPathA<T>(path: string, json: Object): T[] {
-	let res = JSONPath({ path: path, json: json, wrap: true, preventEval: true });
+	let res = JSONPath({ path: path, json: json, wrap: true, eval: false });
 	if (res == null || !(res instanceof Array)) {
 		throw new Error(`JSONPath failed`);
 	}
