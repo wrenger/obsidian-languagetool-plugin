@@ -67,8 +67,10 @@ export const DEFAULT_SETTINGS: LTSettings = {
 	autoCheckDelay: endpoints.standard.minDelay,
 	shouldAutoCheck: false,
 	languageVariety: {
-		"en": "en-US",
-		"de": "de-DE",
+		en: "en-US",
+		de: "de-DE",
+		pt: "pt-PT",
+		ca: "ca-ES"
 	},
 	pickyMode: false,
 };
@@ -88,6 +90,7 @@ export class LTSettingsTab extends PluginSettingTab {
 	private readonly plugin: LanguageToolPlugin;
 	private endpointListeners: EndpointListener[] = [];
 	private languageListeners: LanguageListener[] = [];
+	private languages: Language[] = [];
 
 	public constructor(app: App, plugin: LanguageToolPlugin) {
 		super(app, plugin);
@@ -110,20 +113,16 @@ export class LTSettingsTab extends PluginSettingTab {
 	private async configureLanguageVariants(
 		dropdown: DropdownComponent,
 		code: string,
-		staticLanguage: DropdownComponent | null
 	): Promise<void> {
-		const settings = this.plugin.settings;
+		const languageVariety = this.plugin.settings.languageVariety;
+		const variants = languageVariants(this.languages, code);
+		languageVariety[code] = languageVariety[code] ?? Object.keys(variants)[0];
+
 		dropdown
-			.addOption("default", '---')
-			.setValue('default')
+			.addOptions(variants)
+			.setValue(languageVariety[code])
 			.onChange(async value => {
-				if (value === 'default') {
-					delete settings.languageVariety[code];
-				} else {
-					settings.staticLanguage = 'auto';
-					staticLanguage?.setValue('auto');
-					settings.languageVariety[code] = value;
-				}
+				languageVariety[code] = value;
 				await this.plugin.saveSettings();
 			});
 
@@ -133,9 +132,11 @@ export class LTSettingsTab extends PluginSettingTab {
 				dropdown.selectEl.remove(0);
 			}
 
+			const variants = languageVariants(l, code);
+			languageVariety[code] = languageVariety[code] ?? Object.keys(variants)[0];
 			dropdown
-				.addOptions({ default: '---', ...languageVariants(l, code) })
-				.setValue(settings.languageVariety[code] ?? 'default')
+				.addOptions(variants)
+				.setValue(languageVariety[code])
 		})
 	}
 
@@ -148,6 +149,7 @@ export class LTSettingsTab extends PluginSettingTab {
 		this.endpointListeners = [async url => {
 			let lang: Language[] = [];
 			if (url) lang = await languages(url);
+			this.languages = lang;
 			for (const listener of this.languageListeners) {
 				await listener(lang);
 			}
@@ -342,21 +344,12 @@ export class LTSettingsTab extends PluginSettingTab {
 				})
 			});
 
-		let staticLanguage: DropdownComponent | null;
-		let langVariants: { [key: string]: { name: string, dropdown: DropdownComponent | null } } = {
-			en: { name: "English", dropdown: null },
-			de: { name: "German", dropdown: null },
-			pt: { name: "Portuguese", dropdown: null },
-			ca: { name: "Catalan", dropdown: null },
-		};
-
 		new Setting(containerEl)
 			.setName('Static language')
 			.setDesc(
 				'Set a static language that will always be used (LanguageTool tries to auto detect the language, this is usually not necessary)',
 			)
 			.addDropdown(component => {
-				staticLanguage = component;
 				this.languageListeners.push(async languages => {
 					// Clear options
 					while (component.selectEl.options.length > 0) {
@@ -369,16 +362,9 @@ export class LTSettingsTab extends PluginSettingTab {
 						.setValue(settings.staticLanguage ?? 'auto')
 						.onChange(async value => {
 							settings.staticLanguage = value !== "auto" ? value : undefined;
-							if (value !== 'auto') {
-								settings.languageVariety = {};
-
-								for (const l of Object.values(langVariants)) {
-									l.dropdown?.setValue('default');
-								}
-							}
 							await this.plugin.saveSettings();
 						});
-				})
+				});
 			});
 
 		new Setting(containerEl)
@@ -386,10 +372,15 @@ export class LTSettingsTab extends PluginSettingTab {
 			.setHeading()
 			.setDesc('Some languages have varieties depending on the country they are spoken in.');
 
+		let langVariants = {
+			en: "English",
+			de: "German",
+			pt: "Portuguese",
+			ca: "Catalan",
+		};
 		for (let [id, lang] of Object.entries(langVariants)) {
-			new Setting(containerEl).setName(`Interpret ${lang.name} as`).addDropdown(async component => {
-				lang.dropdown = component;
-				this.configureLanguageVariants(component, id, staticLanguage);
+			new Setting(containerEl).setName(`Interpret ${lang} as`).addDropdown(async component => {
+				this.configureLanguageVariants(component, id);
 			});
 		}
 

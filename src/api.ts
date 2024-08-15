@@ -68,7 +68,8 @@ export async function check(
 	if (settings.disabledRules)
 		params.disabledRules = settings.disabledRules;
 
-	params.preferredVariants = Object.values(settings.languageVariety).join(',');
+	if (settings.staticLanguage == null)
+		params.preferredVariants = Object.values(settings.languageVariety).join(',');
 
 	if (settings.apikey && settings.username) {
 		params.username = settings.username;
