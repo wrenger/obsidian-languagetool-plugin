@@ -117,9 +117,8 @@ export interface Language {
 	longCode: string;
 }
 
-export async function languages(settings: LTSettings): Promise<Language[]> {
-	if (this.languages) return this.languages;
-	const languages = await requestUrl({ url: `${settings.serverUrl}/v2/languages` }).json;
+export async function languages(serverUrl: string): Promise<Language[]> {
+	const languages = await requestUrl({ url: `${serverUrl}/v2/languages` }).json;
 	if (languages == null || !(languages instanceof Array))
 		throw new Error(`Error processing response from LanguageTool.`);
 	return languages as Language[];

@@ -16,12 +16,14 @@ export default class LanguageToolPlugin extends Plugin {
 	private isLoading = false;
 
 	public logs: string[] = [];
+	private settingTab: LTSettingsTab;
 
 	public async onload(): Promise<void> {
 		// Settings
 		await this.loadSettings();
 
-		this.addSettingTab(new LTSettingsTab(this.app, this));
+		this.settingTab = new LTSettingsTab(this.app, this);
+		this.addSettingTab(this.settingTab);
 
 		// Status bar
 		this.app.workspace.onLayoutReady(() => {
@@ -385,5 +387,9 @@ Settings: ${JSON.stringify({ ...settings, username: 'REDACTED', apikey: 'REDACTE
 
 	public async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
+	}
+
+	public async onExternalSettingsChange() {
+		this.settingTab.notifyEndpointChange(this.settings);
 	}
 }

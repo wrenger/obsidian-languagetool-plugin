@@ -70,9 +70,21 @@ export const DEFAULT_SETTINGS: LTSettings = {
 	pickyMode: false,
 };
 
+interface EndpointListener {
+	(e: string): Promise<void>
+}
+interface LanguageListener {
+	(l: Language[]): Promise<void>
+}
+function languageVariants(languages: Language[], code: string): Record<string, string> {
+	languages = languages.filter(v => v.code === code).filter(v => v.longCode !== v.code);
+	return Object.fromEntries(languages.map(v => [v.longCode, v.name]));
+}
+
 export class LTSettingsTab extends PluginSettingTab {
 	private readonly plugin: LanguageToolPlugin;
-	private languages: Promise<Language[]> | null;
+	private endpointListeners: EndpointListener[] = [];
+	private languageListeners: LanguageListener[] = [];
 
 	public constructor(app: App, plugin: LanguageToolPlugin) {
 		super(app, plugin);
@@ -86,42 +98,59 @@ export class LTSettingsTab extends PluginSettingTab {
 		slider.setLimits(minAutoCheckDelay, autoCheckDelayMax, autoCheckDelayStep);
 	}
 
-	private async getLanguages(): Promise<Language[]> {
-		if (this.languages == null) this.languages = languages(this.plugin.settings);
-		return await this.languages;
+	public async notifyEndpointChange(settings: LTSettings): Promise<void> {
+		for (const listener of this.endpointListeners) {
+			await listener(settings.serverUrl);
+		}
 	}
 
-	private async getLanguageVariants(code: string): Promise<Record<string, string>> {
-		let languages = await this.getLanguages()
-		languages = languages.filter(v => v.code === code).filter(v => v.longCode !== v.code);
-		return Object.fromEntries(languages.map(v => [v.longCode, v.name]));
-	}
-
-	private async configureLanguageVariants(dropdown: DropdownComponent, code: string, staticLanguageComponent: DropdownComponent | null): Promise<void> {
-		let settings = this.plugin.settings;
+	private async configureLanguageVariants(
+		dropdown: DropdownComponent,
+		code: string,
+		staticLanguage: DropdownComponent | null
+	): Promise<void> {
+		const settings = this.plugin.settings;
 		dropdown
-			.addOptions({
-				default: '---',
-				... await this.getLanguageVariants(code),
-			})
-			.setValue(settings.languageVariety[code] ?? 'default')
+			.addOption("default", '---')
+			.setValue('default')
 			.onChange(async value => {
 				if (value === 'default') {
 					delete settings.languageVariety[code];
 				} else {
 					settings.staticLanguage = 'auto';
-					staticLanguageComponent?.setValue('auto');
+					staticLanguage?.setValue('auto');
 					settings.languageVariety[code] = value;
 				}
 				await this.plugin.saveSettings();
 			});
+
+		this.languageListeners.push(async l => {
+			// Clear options
+			while (dropdown.selectEl.options.length > 0) {
+				dropdown.selectEl.remove(0);
+			}
+
+			dropdown
+				.addOptions({ default: '---', ...languageVariants(l, code) })
+				.setValue(settings.languageVariety[code] ?? 'default')
+		})
 	}
 
-	public display(): void {
+	public async display(): Promise<void> {
 		const { containerEl } = this;
 		containerEl.empty();
 
 		const settings = this.plugin.settings;
+
+		this.endpointListeners = [async url => {
+			let lang: Language[] = [];
+			if (url) lang = await languages(url);
+			for (const listener of this.languageListeners) {
+				await listener(lang);
+			}
+		}];
+		this.languageListeners = [];
+
 
 		new Setting(containerEl)
 			.setName('Error logs')
@@ -164,6 +193,8 @@ export class LTSettingsTab extends PluginSettingTab {
 							if (autoCheckDelaySlider)
 								this.configureCheckDelay(autoCheckDelaySlider, endpoint);
 
+							await this.notifyEndpointChange(settings);
+
 							await this.plugin.saveSettings();
 						});
 				});
@@ -181,6 +212,9 @@ export class LTSettingsTab extends PluginSettingTab {
 								dropdown?.setValue(endpoint);
 								input?.setDisabled(true);
 							}
+
+							await this.notifyEndpointChange(settings);
+
 							await this.plugin.saveSettings();
 						});
 				});
@@ -285,24 +319,27 @@ export class LTSettingsTab extends PluginSettingTab {
 			.setName('Mother tongue')
 			.setDesc('Set mother tongue if you want to be warned about false friends when writing in other languages. This setting will also be used for automatic language detection.')
 			.addDropdown(component => {
-				this.getLanguages()
-					.then(languages => {
-						component
-							.addOption('none', '---')
-							.addOptions(Object.fromEntries(
-								// only languages that are not dialects
-								languages.filter(v => v.longCode == v.code).map(v => [v.longCode, v.name])
-							))
-							.setValue(settings.motherTongue ?? 'none')
-							.onChange(async value => {
-								settings.motherTongue = value !== "none" ? value : undefined;
-								await this.plugin.saveSettings();
-							});
-					})
-					.catch(console.error);
+				this.languageListeners.push(async languages => {
+					// Clear options
+					while (component.selectEl.options.length > 0) {
+						component.selectEl.remove(0);
+					}
+
+					component
+						.addOption('none', '---')
+						.addOptions(Object.fromEntries(
+							// only languages that are not dialects
+							languages.filter(v => v.longCode == v.code).map(v => [v.longCode, v.name])
+						))
+						.setValue(settings.motherTongue ?? 'none')
+						.onChange(async value => {
+							settings.motherTongue = value !== "none" ? value : undefined;
+							await this.plugin.saveSettings();
+						});
+				})
 			});
 
-		let staticLanguageComponent: DropdownComponent | null;
+		let staticLanguage: DropdownComponent | null;
 		let langVariants: { [key: string]: { name: string, dropdown: DropdownComponent | null } } = {
 			en: { name: "English", dropdown: null },
 			de: { name: "German", dropdown: null },
@@ -316,26 +353,29 @@ export class LTSettingsTab extends PluginSettingTab {
 				'Set a static language that will always be used (LanguageTool tries to auto detect the language, this is usually not necessary)',
 			)
 			.addDropdown(component => {
-				staticLanguageComponent = component;
-				this.getLanguages()
-					.then(languages => {
-						component
-							.addOption('auto', 'Auto Detect')
-							.addOptions(Object.fromEntries(languages.map(v => [v.longCode, v.name])))
-							.setValue(settings.staticLanguage ?? 'auto')
-							.onChange(async value => {
-								settings.staticLanguage = value !== "auto" ? value : undefined;
-								if (value !== 'auto') {
-									settings.languageVariety = {};
+				staticLanguage = component;
+				this.languageListeners.push(async languages => {
+					// Clear options
+					while (component.selectEl.options.length > 0) {
+						component.selectEl.remove(0);
+					}
 
-									for (const l of Object.values(langVariants)) {
-										l.dropdown?.setValue('default');
-									}
+					component
+						.addOption('auto', 'Auto Detect')
+						.addOptions(Object.fromEntries(languages.map(v => [v.longCode, v.name])))
+						.setValue(settings.staticLanguage ?? 'auto')
+						.onChange(async value => {
+							settings.staticLanguage = value !== "auto" ? value : undefined;
+							if (value !== 'auto') {
+								settings.languageVariety = {};
+
+								for (const l of Object.values(langVariants)) {
+									l.dropdown?.setValue('default');
 								}
-								await this.plugin.saveSettings();
-							});
-					})
-					.catch(console.error);
+							}
+							await this.plugin.saveSettings();
+						});
+				})
 			});
 
 		new Setting(containerEl)
@@ -346,7 +386,7 @@ export class LTSettingsTab extends PluginSettingTab {
 		for (let [id, lang] of Object.entries(langVariants)) {
 			new Setting(containerEl).setName(`Interpret ${lang.name} as`).addDropdown(async component => {
 				lang.dropdown = component;
-				this.configureLanguageVariants(component, id, staticLanguageComponent);
+				this.configureLanguageVariants(component, id, staticLanguage);
 			});
 		}
 
@@ -424,5 +464,7 @@ export class LTSettingsTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}),
 			);
+
+		await this.notifyEndpointChange(settings);
 	}
 }
