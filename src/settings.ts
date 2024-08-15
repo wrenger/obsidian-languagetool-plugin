@@ -63,7 +63,7 @@ export interface LTSettings {
 }
 
 export const DEFAULT_SETTINGS: LTSettings = {
-	serverUrl: Object.keys(endpoints)[0],
+	serverUrl: endpoints["standard"].url,
 	autoCheckDelay: endpoints.standard.minDelay,
 	shouldAutoCheck: false,
 	languageVariety: {},
