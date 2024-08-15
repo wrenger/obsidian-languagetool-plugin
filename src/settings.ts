@@ -66,7 +66,10 @@ export const DEFAULT_SETTINGS: LTSettings = {
 	serverUrl: endpoints["standard"].url,
 	autoCheckDelay: endpoints.standard.minDelay,
 	shouldAutoCheck: false,
-	languageVariety: {},
+	languageVariety: {
+		"en": "en-US",
+		"de": "de-DE",
+	},
 	pickyMode: false,
 };
 
