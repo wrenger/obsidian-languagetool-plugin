@@ -2,7 +2,7 @@ import { EditorView, Tooltip, showTooltip } from '@codemirror/view';
 import { StateField, EditorState } from '@codemirror/state';
 import { categoryCssClass } from '../helpers';
 import { setIcon } from 'obsidian';
-import { default as LanguageToolPlugin, SUGGESTIONS } from 'src/main';
+import { getElectronWindow, default as LanguageToolPlugin, SUGGESTIONS } from 'src/main';
 import { clearUnderlinesInRange, underlineField, clearMatchingUnderlines } from './underlineStateField';
 import { LTMatch } from "src/api";
 
@@ -75,12 +75,9 @@ function constructTooltip(plugin: LanguageToolPlugin, view: EditorView, underlin
 					setIcon(button.createSpan(), 'plus-with-circle');
 					button.createSpan({ text: 'Add to personal dictionary' });
 					button.onclick = () => {
-						const spellcheckDictionary: string[] = (plugin.app.vault as any).getConfig('spellcheckDictionary') || [];
-
-						(plugin.app.vault as any).setConfig('spellcheckDictionary', [
-							...spellcheckDictionary,
-							view.state.sliceDoc(underline.from, underline.to),
-						]);
+						let word = view.state.sliceDoc(underline.from, underline.to);
+						// Add to global dictionary
+						getElectronWindow().webContents.session.addWordToSpellCheckerDictionary(word);
 
 						// Remove other underlines with the same word
 						view.dispatch({

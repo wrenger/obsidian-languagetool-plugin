@@ -1,6 +1,6 @@
 {
     "name": "obsidian-languagetool",
-    "version": "1.0.6",
+    "version": "1.0.7",
     "description": "Inofficial plugin that integrates the LanguageTool spell and grammar checker into obsidian.",
     "main": "main.js",
     "scripts": {
@@ -30,17 +30,18 @@
     "devDependencies": {
         "@codemirror/language": "https://github.com/lishid/cm-language",
         "@codemirror/state": "^6.4.1",
-        "@codemirror/view": "^6.28.2",
-        "@types/node": "^20.14.9",
-        "@typescript-eslint/eslint-plugin": "^7.14.1",
-        "@typescript-eslint/parser": "^7.14.1",
-        "@typescript-eslint/typescript-estree": "^7.14.1",
+        "@codemirror/view": "^6.33.0",
+        "@types/node": "^22.5.0",
+        "@typescript-eslint/eslint-plugin": "^8.2.0",
+        "@typescript-eslint/parser": "^8.2.0",
+        "@typescript-eslint/typescript-estree": "^8.2.0",
         "builtin-modules": "4.0.0",
-        "esbuild": "0.21.5",
-        "eslint": "^9.5.0",
-        "obsidian": "^1.5.0",
-        "tslib": "^2.6.3",
-        "typescript": "^5.5.2"
+        "electron": "^32.0.1",
+        "esbuild": "0.23.1",
+        "eslint": "^9.9.1",
+        "obsidian": "^1.6.6",
+        "tslib": "^2.7.0",
+        "typescript": "^5.5.4"
     },
     "dependencies": {
         "annotatedtext-remark": "^1.0.10",

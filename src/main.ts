@@ -6,8 +6,16 @@ import { LTMatch, check, SYNONYMS } from './api';
 import { buildUnderlineExtension } from './cm6/underlineExtension';
 import { LTRange, addUnderline, clearAllUnderlines, clearUnderlinesInRange, underlineField } from './cm6/underlineStateField';
 import { syntaxTree } from "@codemirror/language";
+import { BrowserWindow } from "electron";
 
 export const SUGGESTIONS = 5;
+
+/// Return the electron window
+export function getElectronWindow(): BrowserWindow {
+	let win = (window as any).electronWindow;
+	if (win == null) throw Error("Electron not found!");
+	return (window as any).electronWindow as BrowserWindow;
+}
 
 export default class LanguageToolPlugin extends Plugin {
 	public settings: LTSettings;
@@ -39,6 +47,17 @@ export default class LanguageToolPlugin extends Plugin {
 		this.registerCommands();
 
 		this.registerMenuItems();
+
+		// Add old words to the spell check dictionary
+		const words = (this.app.vault as any).getConfig('spellcheckDictionary');
+		if (words && Array.isArray(words)) {
+			const electronWindow = getElectronWindow();
+			for (const word of words) {
+				if (typeof word === "string")
+					electronWindow.webContents.session.addWordToSpellCheckerDictionary(word);
+			}
+			(this.app.vault as any).setConfig('spellcheckDictionary', undefined);
+		}
 	}
 
 	public onunload() {
@@ -342,8 +361,8 @@ export default class LanguageToolPlugin extends Plugin {
 		}
 
 		if (matches) {
-			// TODO: Allow removing words from the dictionary
-			const spellcheckDictionary: string[] = (this.app.vault as any).getConfig('spellcheckDictionary') || [];
+			const spellcheckDictionary = await getElectronWindow()
+				.webContents.session.listWordsInSpellCheckerDictionary();
 
 			for (const match of matches) {
 				// Fixes a bug where the match is outside the document
