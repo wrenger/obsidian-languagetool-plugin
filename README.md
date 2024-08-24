@@ -2,14 +2,15 @@
 
 This plugin for [Obsidian.md](https://obsidian.md) integrates [LanguageTool](https://languagetool.org/) to provide advanced grammar and spellchecking.
 
+<img src="demos/image.png" style="border:1px solid black" />
+
 > This is a fork of the original [obsidian-languagetool-plugin](https://github.com/Clemens-E/obsidian-languagetool-plugin), with the following changes:
 > - Added support for synonyms and mother tongue
 > - Add tooltip button for disabling rules
 > - Remove old code and clean up the codebase, following Obsidian's best practices
 > - Fix multiple bugs and freezes
 
-Note: if you are worried about the privacy of your notes, you should self-host languagetool locally on your PC or on a server: [Docker Image](https://hub.docker.com/r/erikvl87/languagetool)
-
+**Note:** if you are worried about the privacy of your notes, you should self-host LanguageTool locally on your PC or on a server.
 If you decide to self-host the service, you must change the link in the configuration accordingly.
 
 ## Installation
@@ -21,7 +22,7 @@ If you decide to self-host the service, you must change the link in the configur
 
 ## Setting Up & Use Case
 
-After installing and enabling the plugin, you can set up hotkeys (under Settings / Hotkeys), which can be found under the description "LanguageTool Integration" through the Filter search field, to find specific hotkey functions quicker. Ensure no conflict exists with existing hotkeys and the spellcheck function within Obsidian if enabled (Settings / Editor / Spellcheck ON/OFF).
+After installing and enabling the plugin, you can set up hotkeys (under Settings / Hotkeys), which can be found under the description "LanguageTool Integration" through the Filter search field, to find specific hotkey functions quicker. Ensure no conflict exists with existing hotkeys and the spellcheck function within Obsidian if enabled (`Settings / Editor / Spellcheck ON/OFF`).
 
 * **"Check Text"** checks the whole document in view if no text is selected. If you want to check only a word, sentence, or paragraph, select the text of choice and press the keyboard shortcut you have previously set. Click on the red underlined word that LanguageTool identified as a possible spelling mistake to get corrective suggestions in a popover window, with the option to add the word to a personal dictionary.
 * **"Clear Suggestions"** clears the document or selected text of all red underlines from words or passages that were not corrected or changed.
@@ -29,9 +30,11 @@ After installing and enabling the plugin, you can set up hotkeys (under Settings
 
 **LanguageTool tries to auto-detect the language used.** Selecting a specific language (under Settings / Plugin Options / LanguageTool Integration / Static language) usually is not necessary. **This feature enables the user to spellcheck in different languages within the same document** (e.g. a dissertation written in English with quotes in a foreign language), which is ordinarily not possible with the built-in spellcheck function of Obsidian.
 
+**Custom Spellchecker Dictionary:** This plugin uses Obsidian's (or rather Electron's) spellchecker dictionary. You can add words to this dictionary directly from the editor and remove them again in the Obsidian settings (`Settings / Editor / Spellcheck (cogwheel button)`).
+
 ## Premium Accounts
 
-We finally support LanguageTool Premium.
+We support LanguageTool Premium.
 
 > ⚠️ Please report any bugs, issues, or suggestions related to this Plugin to us (this GitHub Repository) directly and ***not*** to LanguageTool, as this is an unofficial community plugin
 
@@ -44,7 +47,3 @@ Configure your email, API key, and the new URL (https://api.languagetoolplus.com
 
 - Run `yarn install` and `yarn build` in the root directory of the repository.
 - Copy over `main.js`, `styles.css`, `manifest.json` from the latest release to your vault `VaultFolder/.obsidian/plugins/languagetool/`.
-
-# Demo
-
-![demo-02022022](demos/Demo1.png)
