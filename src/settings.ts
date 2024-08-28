@@ -55,6 +55,8 @@ export interface LTSettings {
 	staticLanguage?: string;
 	languageVariety: Record<string, string>;
 
+	dictionary: string[],
+
 	pickyMode: boolean;
 	enabledCategories?: string;
 	disabledCategories?: string;
@@ -72,6 +74,7 @@ export const DEFAULT_SETTINGS: LTSettings = {
 		pt: "pt-PT",
 		ca: "ca-ES"
 	},
+	dictionary: [],
 	pickyMode: false,
 };
 
@@ -384,7 +387,24 @@ export class LTSettingsTab extends PluginSettingTab {
 			});
 		}
 
-		new Setting(containerEl).setName('Rule categories').setHeading()
+		new Setting(containerEl).setName("Spellcheck Dictionary").setHeading();
+		new Setting(containerEl)
+			.setName('Ignored Words')
+			.setDesc('Words that should not be highlighted as spelling mistakes.')
+			.addTextArea(component => {
+				component
+					.setPlaceholder('word1\nword2\n...')
+					.setValue(settings.dictionary.join('\n'))
+					.onChange(async value => {
+						settings.dictionary = value.split("\n").map(v => v.trim()).filter(v => v.length > 0);
+						await this.plugin.saveSettings()
+					});
+				component.inputEl.rows = 5;
+			});
+
+		new Setting(containerEl)
+			.setName('Rule categories')
+			.setHeading()
 			.setDesc(createFragment((frag) => {
 				frag.appendText('The picky mode enables a lot of extra categories and rules. Additionally, you can enable or disable specific rules down below.');
 				frag.createEl('br');

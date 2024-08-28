@@ -48,16 +48,25 @@ export default class LanguageToolPlugin extends Plugin {
 
 		this.registerMenuItems();
 
+		// Spellcheck Dictionary
+		let dictionary: Set<string> = new Set();
+
 		// Add old words to the spell check dictionary
-		const words = (this.app.vault as any).getConfig('spellcheckDictionary');
-		if (words && Array.isArray(words)) {
-			const electronWindow = getElectronWindow();
-			for (const word of words) {
-				if (typeof word === "string")
-					electronWindow.webContents.session.addWordToSpellCheckerDictionary(word);
+		try {
+			const words = (this.app.vault as any).getConfig('spellcheckDictionary');
+			if (words && Array.isArray(words)) {
+				words.forEach(v => dictionary.add(v.trim()));
+				(this.app.vault as any).setConfig('spellcheckDictionary', undefined);
 			}
-			(this.app.vault as any).setConfig('spellcheckDictionary', undefined);
+		} catch (error) {
+			console.log("Cannot access old spellchecker");
 		}
+
+		this.settings.dictionary.forEach(v => dictionary.add(v.trim()));
+		dictionary.delete('');
+
+		this.settings.dictionary = [...dictionary];
+		await this.saveSettings();
 	}
 
 	public onunload() {
@@ -361,8 +370,7 @@ export default class LanguageToolPlugin extends Plugin {
 		}
 
 		if (matches) {
-			const spellcheckDictionary = await getElectronWindow()
-				.webContents.session.listWordsInSpellCheckerDictionary();
+			const spellcheckDictionary = this.settings.dictionary;
 
 			for (const match of matches) {
 				// Fixes a bug where the match is outside the document

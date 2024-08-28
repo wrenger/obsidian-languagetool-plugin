@@ -30,7 +30,7 @@ After installing and enabling the plugin, you can set up hotkeys (under Settings
 
 **LanguageTool tries to auto-detect the language used.** Selecting a specific language (under Settings / Plugin Options / LanguageTool Integration / Static language) usually is not necessary. **This feature enables the user to spellcheck in different languages within the same document** (e.g. a dissertation written in English with quotes in a foreign language), which is ordinarily not possible with the built-in spellcheck function of Obsidian.
 
-**Custom Spellchecker Dictionary:** This plugin uses Obsidian's (or rather Electron's) spellchecker dictionary. You can add words to this dictionary directly from the editor and remove them again in the Obsidian settings (`Settings / Editor / Spellcheck (cogwheel button)`).
+**Custom Spellchecker Dictionary:**  You can add words to this dictionary directly from the editor and remove them again in the Obsidian settings (`Settings / LanguageTool / Spellcheck Dictionary`).
 
 ## Premium Accounts
 
