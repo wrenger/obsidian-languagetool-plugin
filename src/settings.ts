@@ -1,11 +1,12 @@
 import {
 	App,
 	DropdownComponent,
+	getIcon,
+	Modal,
 	Notice,
 	PluginSettingTab,
 	Setting,
 	SliderComponent,
-	TextAreaComponent,
 	TextComponent,
 } from 'obsidian';
 import LanguageToolPlugin from './main';
@@ -165,6 +166,9 @@ export class LTSettingsTab extends PluginSettingTab {
 				await listener(lang);
 			}
 		});
+		this.endpointListeners.push(async url => {
+			await this.plugin.syncDictionary();
+		})
 		this.languageListeners = [];
 
 
@@ -400,30 +404,16 @@ export class LTSettingsTab extends PluginSettingTab {
 		// ---------------------------------------------------------------------
 		new Setting(containerEl).setName("Spellcheck Dictionary").setHeading();
 
-		let dictionaryComponent: TextAreaComponent | null = null;
 		new Setting(containerEl)
 			.setName('Ignored Words')
 			.setDesc('Words that should not be highlighted as spelling mistakes.')
-			.addTextArea(component => {
+			.addButton(component => {
 				component
-					.setPlaceholder('word1\nword2\n...')
-					.setValue(settings.dictionary.join('\n'))
-					.onChange(async value => {
-						let words = new Set(value.split("\n").map(v => v.trim()).filter(v => v.length > 0))
-						settings.dictionary = [...words].sort(cmpIgnoreCase);
-
-						if (await this.plugin.syncDictionary())
-							component.setValue(settings.dictionary.join('\n'));
+					.setIcon("settings")
+					.setTooltip("Edit dictionary")
+					.onClick(() => {
+						new DictionaryModal(this.app, this.plugin).open();
 					});
-				component.inputEl.rows = 5;
-
-				this.endpointListeners.push(async url => {
-					let changed = await this.plugin.syncDictionary();
-					if (component != null && changed)
-						component.setValue(settings.dictionary.join("\n"));
-				});
-
-				dictionaryComponent = component;
 			});
 
 		new Setting(containerEl)
@@ -435,10 +425,7 @@ export class LTSettingsTab extends PluginSettingTab {
 					.setValue(settings.syncDictionary)
 					.onChange(async value => {
 						settings.syncDictionary = value;
-						let changed = await this.plugin.syncDictionary();
-
-						if (dictionaryComponent != null && changed)
-							dictionaryComponent.setValue(settings.dictionary.join("\n"));
+						await this.plugin.syncDictionary();
 					});
 				this.endpointListeners.push(async url => {
 					component.setDisabled(endpointFromUrl(url) !== "premium");
@@ -526,5 +513,86 @@ export class LTSettingsTab extends PluginSettingTab {
 			);
 
 		await this.notifyEndpointChange(settings);
+	}
+}
+
+
+
+export class DictionaryModal extends Modal {
+	plugin: LanguageToolPlugin;
+	words: string[];
+
+	constructor(app: App, plugin: LanguageToolPlugin) {
+		super(app);
+		this.setTitle("Spellcheck dictionary");
+		this.plugin = plugin;
+		this.words = plugin.settings.dictionary;
+	}
+
+	async onOpen() {
+		this.words = this.plugin.settings.dictionary;
+		const { contentEl } = this;
+
+		let createButtons = (container: HTMLDivElement) => {
+			container.replaceChildren(...this.words.map(word => container.createDiv(
+				{ cls: "multi-select-pill" }, pill => {
+					pill.createDiv({ cls: "multi-select-pill-content" },
+						pill => pill.createSpan({ text: word }));
+					pill.createDiv({ cls: "multi-select-pill-remove-button" }, remove => {
+						remove.appendChild(getIcon("x")!!);
+						remove.onClickEvent(() => {
+							this.words.remove(word);
+							createButtons(container);
+						});
+					});
+				})
+			));
+		}
+
+		let buttonContainer: null | HTMLDivElement = null;
+		contentEl.createDiv({ cls: 'multi-select-container' }, container => {
+			buttonContainer = container;
+			createButtons(container);
+		});
+
+		this.plugin.syncDictionary().then(changed => {
+			if (changed) {
+				this.words = this.plugin.settings.dictionary;
+				if (buttonContainer) createButtons(buttonContainer);
+			}
+		})
+
+		let newWord = "";
+		let addComponent: null | TextComponent = null;
+		let addWord = () => {
+			if (newWord) {
+				this.words = [...new Set([...this.words, newWord])].sort(cmpIgnoreCase);
+				if (buttonContainer) createButtons(buttonContainer);
+				if (addComponent) addComponent.setValue("")
+				newWord = "";
+			}
+		}
+
+		new Setting(contentEl)
+			.setName("Add")
+			.addText(component => {
+				addComponent = component
+					.setValue(newWord)
+					.onChange(value => newWord = value.trim());
+				component.inputEl.addEventListener("keypress", (event) => {
+					if (event.key === "Enter") addWord();
+				})
+			})
+			.addExtraButton(component => {
+				component.setIcon("plus").setTooltip("Add").onClick(() => {
+					addWord();
+				})
+			})
+	}
+
+	async onClose() {
+		this.contentEl.empty();
+		this.plugin.settings.dictionary = this.words;
+		await this.plugin.syncDictionary();
 	}
 }
