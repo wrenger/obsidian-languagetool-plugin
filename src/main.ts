@@ -1,12 +1,13 @@
-import { Command, MarkdownView, Menu, Notice, Plugin, setIcon } from 'obsidian';
+import { Command, Editor, MarkdownView, Menu, Notice, Plugin, setIcon, Tasks } from 'obsidian';
 import { Decoration, EditorView } from '@codemirror/view';
 import { StateEffect } from '@codemirror/state';
-import { DEFAULT_SETTINGS, LTSettings, LTSettingsTab } from './settings';
-import { LTMatch, check, SYNONYMS } from './api';
+import { DEFAULT_SETTINGS, endpointFromUrl, LTSettings, LTSettingsTab } from './settings';
+import { api } from './api';
 import { buildUnderlineExtension } from './cm6/underlineExtension';
 import { LTRange, addUnderline, clearAllUnderlines, clearUnderlinesInRange, underlineField } from './cm6/underlineStateField';
 import { syntaxTree } from "@codemirror/language";
 import { BrowserWindow } from "electron";
+import { cmpIgnoreCase, setDifference, setIntersect, setUnion } from "./helpers";
 
 export const SUGGESTIONS = 5;
 
@@ -37,7 +38,7 @@ export default class LanguageToolPlugin extends Plugin {
 		this.app.workspace.onLayoutReady(() => {
 			this.statusBarText = this.addStatusBarItem();
 			this.setStatusBarReady();
-			this.registerDomEvent(this.statusBarText, 'click', this.handleStatusBarClick);
+			this.registerDomEvent(this.statusBarText, 'click', () => this.handleStatusBarClick());
 		});
 
 		// Editor functionality
@@ -49,23 +50,13 @@ export default class LanguageToolPlugin extends Plugin {
 		this.registerMenuItems();
 
 		// Spellcheck Dictionary
-		let dictionary: Set<string> = new Set();
-
-		// Add old words to the spell check dictionary
-		try {
-			const words = (this.app.vault as any).getConfig('spellcheckDictionary');
-			if (words && Array.isArray(words)) {
-				words.forEach(v => dictionary.add(v.trim()));
-				(this.app.vault as any).setConfig('spellcheckDictionary', undefined);
-			}
-		} catch (error) {
-			console.log("Cannot access old spellchecker");
-		}
-
-		this.settings.dictionary.forEach(v => dictionary.add(v.trim()));
+		let dictionary: Set<string> = new Set(this.settings.dictionary.map(w => w.trim()));
 		dictionary.delete('');
+		this.settings.dictionary = [...dictionary].sort(cmpIgnoreCase);
 
-		this.settings.dictionary = [...dictionary];
+		// Sync with language tool
+		this.syncDictionary();
+
 		await this.saveSettings();
 	}
 
@@ -129,12 +120,17 @@ export default class LanguageToolPlugin extends Plugin {
 		for (let i = 1; i <= SUGGESTIONS; i++) {
 			this.addCommand(this.applySuggestionCommand(i));
 		}
+		this.addCommand({
+			id: 'synonyms',
+			name: "Show synonyms",
+			editorCheckCallback: (checking, editor) => this.showSynonyms(editor, checking),
+		})
 	}
 
 	private applySuggestionCommand(n: number): Command {
 		return {
 			id: `accept-${n}`,
-			name: `Accept suggestion ${n} of the selected hint`,
+			name: `Accept suggestion ${n}`,
 			editorCheckCallback(checking, editor) {
 				// @ts-expect-error, not typed
 				const editorView = editor.cm as EditorView;
@@ -178,57 +174,65 @@ export default class LanguageToolPlugin extends Plugin {
 
 	private registerMenuItems() {
 		this.registerEvent(this.app.workspace.on('editor-menu', (menu, editor, view) => {
-			if (!this.settings.synonyms || !(this.settings.synonyms in SYNONYMS)) return;
-
-			// @ts-expect-error, not typed
-			const editorView = editor.cm as EditorView;
-			let selection = editorView.state.selection.main;
-			if (selection.empty) return;
-
-			let word = editorView.state.sliceDoc(
-				editorView.state.selection.main.from,
-				editorView.state.selection.main.to);
-			if (word.match(/[\s\.]/)) return;
+			if (!this.showSynonyms(editor, true)) return;
 
 			menu.addItem(item => {
 				item.setTitle('Synonyms');
 				item.setIcon('square-stack');
-				item.onClick(async () => {
-					if (!this.settings.synonyms || !(this.settings.synonyms in SYNONYMS)) return;
-
-					let line = editorView.state.doc.lineAt(selection.from);
-
-					let prefix = line.text.slice(0, selection.from - line.from).lastIndexOf('.') + 1;
-					let sentence_raw = line.text.slice(prefix);
-					let sentence = sentence_raw.trimStart();
-					let offset = line.from + prefix + sentence_raw.length - sentence.length;
-					let sel = { from: selection.from - offset, to: selection.to - offset };
-
-					sentence = sentence.trimEnd();
-					let suffix = sentence.indexOf('.');
-					if (suffix !== -1) sentence = sentence.slice(0, suffix + 1);
-
-					let api = SYNONYMS[this.settings.synonyms];
-					if (!api) return;
-
-					let replacements = await api.query(sentence, sel);
-					editorView.dispatch({
-						effects: [
-							addUnderline.of({
-								text: word,
-								from: selection.from,
-								to: selection.to,
-								title: 'Synonyms',
-								message: '',
-								categoryId: 'SYNONYMS',
-								ruleId: 'SYNONYMS',
-								replacements,
-							})
-						]
-					});
-				});
+				item.onClick(() => this.showSynonyms(editor));
 			});
 		}));
+	}
+
+	private showSynonyms(editor: Editor, checking: boolean = false): boolean {
+		if (!this.settings.synonyms || !(this.settings.synonyms in api.SYNONYMS)) return false;
+		let synonyms = api.SYNONYMS[this.settings.synonyms];
+		if (!synonyms) return false;
+
+		// @ts-expect-error, not typed
+		const editorView = editor.cm as EditorView;
+		let selection = editorView.state.selection.main;
+		if (selection.empty) return false;
+
+		let word = editorView.state.sliceDoc(
+			editorView.state.selection.main.from,
+			editorView.state.selection.main.to);
+		if (word.match(/[\s\.]/)) return false;
+
+		if (checking) return true;
+
+		let line = editorView.state.doc.lineAt(selection.from);
+
+		let prefix = line.text.slice(0, selection.from - line.from).lastIndexOf('.') + 1;
+		let sentence_raw = line.text.slice(prefix);
+		let sentence = sentence_raw.trimStart();
+		let offset = line.from + prefix + sentence_raw.length - sentence.length;
+		let sel = { from: selection.from - offset, to: selection.to - offset };
+
+		sentence = sentence.trimEnd();
+		let suffix = sentence.indexOf('.');
+		if (suffix !== -1) sentence = sentence.slice(0, suffix + 1);
+
+		synonyms.query(sentence, sel)
+			.then(replacements => editorView.dispatch({
+				effects: [
+					addUnderline.of({
+						text: word,
+						from: selection.from,
+						to: selection.to,
+						title: 'Synonyms',
+						message: '',
+						categoryId: 'SYNONYMS',
+						ruleId: 'SYNONYMS',
+						replacements,
+					})
+				]
+			}))
+			.catch(e => {
+				this.pushLogs(e);
+				new Notice(e.message, 5000);
+			});
+		return true;
 	}
 
 	public setStatusBarReady() {
@@ -252,13 +256,13 @@ export default class LanguageToolPlugin extends Plugin {
 		});
 	}
 
-	private readonly handleStatusBarClick = () => {
+	private handleStatusBarClick() {
 		const statusBarRect = this.statusBarText.parentElement?.getBoundingClientRect();
 		const statusBarIconRect = this.statusBarText.getBoundingClientRect();
 
 		new Menu()
 			.addItem(item => {
-				item.setTitle('Check current document');
+				item.setTitle('Check text');
 				item.setIcon('checkbox-glyph');
 				item.onClick(async () => {
 					const view = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -301,32 +305,9 @@ export default class LanguageToolPlugin extends Plugin {
 			});
 	};
 
-	private increaseSelection(editor: EditorView, range: LTRange): LTRange {
-		// TODO: Find the actual block with a markdown parser like mdast-util-from-markdown
-
-		let tree = null;
-		if (range.from > 0) {
-			tree = syntaxTree(editor.state);
-			let node = tree.resolveInner(range.from, -1);
-			// Skip list indentation so that remark doesn't interpret this as code block
-			if (node.type.name.startsWith('list-')) {
-				range.from = node.from;
-			} else {
-				range.from = editor.state.doc.lineAt(range.from).from;
-			}
-		} else {
-			range.from = 0;
-		}
-
-		if (range.to < editor.state.doc.length) {
-			range.to = editor.state.doc.lineAt(range.to).to;
-		} else {
-			range.to = editor.state.doc.length;
-		}
-
-		return range;
-	}
-
+	/**
+	 * Check the current document, adding underlines.
+	 */
 	public async runDetection(editor: EditorView, range?: LTRange): Promise<void> {
 		const selection = editor.state.selection.main;
 		if (!range && !selection.empty) {
@@ -336,7 +317,7 @@ export default class LanguageToolPlugin extends Plugin {
 		let offset = 0;
 		let text = '';
 		if (range) {
-			range = this.increaseSelection(editor, range);
+			range = increaseSelection(editor, range);
 			offset = range.from;
 			text = editor.state.sliceDoc(range.from, range.to);
 		} else {
@@ -346,14 +327,14 @@ export default class LanguageToolPlugin extends Plugin {
 		if (!text.trim())
 			return;
 
-		let matches: LTMatch[];
+		let matches: api.LTMatch[];
 		try {
 			this.setStatusBarWorking();
-			matches = await check(this.settings, offset, text);
+			matches = await api.check(this.settings, offset, text);
 		} catch (e) {
 			console.error(e);
 			if (e instanceof Error) {
-				this.pushLogs(e, this.settings);
+				this.pushLogs(e);
 				new Notice(e.message, 5000);
 			}
 			return;
@@ -391,16 +372,18 @@ export default class LanguageToolPlugin extends Plugin {
 		}
 	}
 
-	private async pushLogs(e: Error, settings: LTSettings): Promise<void> {
+	/**
+	 * Add an error to the log.
+	 */
+	private async pushLogs(e: Error): Promise<void> {
 		let debugString = `${new Date().toLocaleString()}:
 Error: '${e.message}'
-Settings: ${JSON.stringify({ ...settings, username: 'REDACTED', apikey: 'REDACTED' })}
+Settings: ${JSON.stringify({ ...this.settings, username: 'REDACTED', apikey: 'REDACTED' })}
 `;
-		if (settings.username || settings.apikey) {
-			debugString = debugString
-				.replaceAll(settings.username ?? 'username', '<<username>>')
-				.replaceAll(settings.apikey ?? 'apiKey', '<<apikey>>');
-		}
+		if (this.settings.username)
+			debugString = debugString.replaceAll(this.settings.username, "<<username>>");
+		if (this.settings.apikey)
+			debugString = debugString.replaceAll(this.settings.apikey, "<<username>>");
 
 		this.logs.push(debugString);
 		if (this.logs.length > 10) {
@@ -419,4 +402,87 @@ Settings: ${JSON.stringify({ ...settings, username: 'REDACTED', apikey: 'REDACTE
 	public async onExternalSettingsChange() {
 		this.settingTab.notifyEndpointChange(this.settings);
 	}
+
+	/**
+	 * Synchronizes with the LanguageTool dictionary,
+	 * returning whether the local dictionary has been changed.
+	 */
+	public async syncDictionary(): Promise<boolean> {
+		if (!this.settings.syncDictionary || endpointFromUrl(this.settings.serverUrl) !== "premium") {
+			await this.saveSettings();
+			return false;
+		}
+
+		try {
+			let lastWords = new Set(this.settings.remoteDictionary);
+			let localWords = new Set(this.settings.dictionary);
+			let remoteWords = new Set(await api.words(this.settings));
+
+			// words that have been removed locally
+			let localRemoved = setDifference(lastWords, localWords);
+			localRemoved = setIntersect(localRemoved, remoteWords);
+			for (let word of localRemoved) {
+				await api.wordsDel(this.settings, word);
+			}
+
+			// words that have been removed remotely
+			let remoteRemoved = setDifference(lastWords, remoteWords);
+
+			remoteWords = setDifference(remoteWords, localRemoved);
+			localWords = setDifference(localWords, remoteRemoved);
+
+			// words that have been added locally
+			let missingRemote = setDifference(localWords, remoteWords);
+			for (let word of missingRemote) {
+				await api.wordsAdd(this.settings, word);
+			}
+
+			// merge remaining words
+			let words = setUnion(remoteWords, localWords);
+
+			let oldLocal = new Set(this.settings.dictionary)
+			let localChanged = oldLocal.size !== words.size
+			setUnion(oldLocal, words).size !== words.size;
+
+			this.settings.dictionary = [...words].sort(cmpIgnoreCase);
+			this.settings.remoteDictionary = [...words].sort(cmpIgnoreCase);
+			await this.saveSettings();
+			return localChanged;
+		} catch (e) {
+			this.pushLogs(e);
+			console.error("Failed sync spellcheck with LanguageTool", e);
+		}
+		await this.saveSettings();
+		return false;
+	}
+}
+
+
+/**
+ * Try to select a semantic block, so that the grammar checks are more accurate.
+ */
+function increaseSelection(editor: EditorView, range: LTRange): LTRange {
+	// TODO: Find the actual block with a markdown parser like mdast-util-from-markdown
+
+	let tree = null;
+	if (range.from > 0) {
+		tree = syntaxTree(editor.state);
+		let node = tree.resolveInner(range.from, -1);
+		// Skip list indentation so that remark doesn't interpret this as code block
+		if (node.type.name.startsWith('list-')) {
+			range.from = node.from;
+		} else {
+			range.from = editor.state.doc.lineAt(range.from).from;
+		}
+	} else {
+		range.from = 0;
+	}
+
+	if (range.to < editor.state.doc.length) {
+		range.to = editor.state.doc.lineAt(range.to).to;
+	} else {
+		range.to = editor.state.doc.length;
+	}
+
+	return range;
 }

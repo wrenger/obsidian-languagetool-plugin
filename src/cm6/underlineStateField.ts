@@ -3,7 +3,7 @@ import { StateField, StateEffect } from '@codemirror/state';
 import { syntaxTree, tokenClassNodeProp } from '@codemirror/language';
 import { Tree } from '@lezer/common';
 import { categoryCssClass } from '../helpers';
-import { LTMatch } from "src/api";
+import { api } from "src/api";
 
 export const ignoreListRegEx = /(frontmatter|code|math|templater|blockid|hashtag|internal)/;
 
@@ -12,10 +12,10 @@ export interface LTRange {
 	to: number;
 };
 
-type UnderlineMatcher = (underline: LTMatch) => boolean;
+type UnderlineMatcher = (underline: api.LTMatch) => boolean;
 
 /** Add new underline */
-export const addUnderline = StateEffect.define<LTMatch>();
+export const addUnderline = StateEffect.define<api.LTMatch>();
 /** Remove all underlines */
 export const clearAllUnderlines = StateEffect.define();
 /** Remove underlines in range */
@@ -57,7 +57,7 @@ export const underlineField = StateField.define<DecorationSet>({
 		};
 
 		// Ignore certain rules in special cases
-		const isRuleAllowed = (underline: LTMatch) => {
+		const isRuleAllowed = (underline: api.LTMatch) => {
 			if (!tree) tree = syntaxTree(tr.state);
 
 			// Don't display whitespace rules in tables
@@ -108,7 +108,7 @@ export const underlineField = StateField.define<DecorationSet>({
 				});
 			} else if (e.is(clearMatchingUnderlines)) {
 				underlines = underlines.update({
-					filter: (from, to, value) => !e.value(value.spec.underline as LTMatch),
+					filter: (from, to, value) => !e.value(value.spec.underline as api.LTMatch),
 				});
 			}
 		}

@@ -4,9 +4,9 @@ import { categoryCssClass } from '../helpers';
 import { setIcon } from 'obsidian';
 import { default as LanguageToolPlugin, SUGGESTIONS } from 'src/main';
 import { clearUnderlinesInRange, underlineField, clearMatchingUnderlines } from './underlineStateField';
-import { LTMatch } from "src/api";
+import { api } from "src/api";
 
-function constructTooltip(plugin: LanguageToolPlugin, view: EditorView, underline: LTMatch): HTMLDivElement {
+function constructTooltip(plugin: LanguageToolPlugin, view: EditorView, underline: api.LTMatch): HTMLDivElement {
 	const buttons = underline.replacements.slice(0, SUGGESTIONS);
 	const category = underline.categoryId;
 	const ruleId = underline.ruleId;
@@ -77,7 +77,7 @@ function constructTooltip(plugin: LanguageToolPlugin, view: EditorView, underlin
 					button.onclick = async () => {
 						// Add to global dictionary
 						plugin.settings.dictionary.push(underline.text);
-						await plugin.saveSettings();
+						await plugin.syncDictionary();
 
 						// Remove other underlines with the same word
 						view.dispatch({
@@ -122,10 +122,10 @@ function getTooltip(tooltips: readonly Tooltip[], plugin: LanguageToolPlugin, st
 		return [];
 	}
 
-	let primaryUnderline: LTMatch | null = null;
+	let primaryUnderline: api.LTMatch | null = null;
 
 	underlines.between(state.selection.main.from, state.selection.main.to, (from, to, value) => {
-		primaryUnderline = { ...value.spec.underline as LTMatch, from, to };
+		primaryUnderline = { ...value.spec.underline as api.LTMatch, from, to };
 	});
 
 	if (primaryUnderline != null) {
@@ -148,7 +148,7 @@ function getTooltip(tooltips: readonly Tooltip[], plugin: LanguageToolPlugin, st
 				arrow: false,
 				create: view => {
 					return {
-						dom: constructTooltip(plugin, view, primaryUnderline as LTMatch),
+						dom: constructTooltip(plugin, view, primaryUnderline as api.LTMatch),
 					};
 				},
 			},

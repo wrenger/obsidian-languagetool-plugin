@@ -5,10 +5,12 @@ import {
 	PluginSettingTab,
 	Setting,
 	SliderComponent,
+	TextAreaComponent,
 	TextComponent,
 } from 'obsidian';
 import LanguageToolPlugin from './main';
-import { Language, SYNONYMS, languages } from "./api";
+import { api } from "./api";
+import { cmpIgnoreCase } from "./helpers";
 
 const autoCheckDelayMax = 5000;
 const autoCheckDelayStep = 250;
@@ -35,7 +37,7 @@ const endpoints = {
 };
 type EndpointType = keyof typeof endpoints;
 
-function endpointFromUrl(url: string): EndpointType {
+export function endpointFromUrl(url: string): EndpointType {
 	for (const [key, value] of Object.entries(endpoints)) {
 		if (value.url === url) return key as EndpointType;
 	}
@@ -56,6 +58,9 @@ export interface LTSettings {
 	languageVariety: Record<string, string>;
 
 	dictionary: string[],
+	syncDictionary: boolean,
+	/// Snapshot of the last synchronization
+	remoteDictionary: string[],
 
 	pickyMode: boolean;
 	enabledCategories?: string;
@@ -75,6 +80,8 @@ export const DEFAULT_SETTINGS: LTSettings = {
 		ca: "ca-ES"
 	},
 	dictionary: [],
+	syncDictionary: false,
+	remoteDictionary: [],
 	pickyMode: false,
 };
 
@@ -82,9 +89,9 @@ interface EndpointListener {
 	(e: string): Promise<void>
 }
 interface LanguageListener {
-	(l: Language[]): Promise<void>
+	(l: api.Language[]): Promise<void>
 }
-function languageVariants(languages: Language[], code: string): Record<string, string> {
+function languageVariants(languages: api.Language[], code: string): Record<string, string> {
 	languages = languages.filter(v => v.code === code).filter(v => v.longCode !== v.code);
 	return Object.fromEntries(languages.map(v => [v.longCode, v.name]));
 }
@@ -93,7 +100,7 @@ export class LTSettingsTab extends PluginSettingTab {
 	private readonly plugin: LanguageToolPlugin;
 	private endpointListeners: EndpointListener[] = [];
 	private languageListeners: LanguageListener[] = [];
-	private languages: Language[] = [];
+	private languages: api.Language[] = [];
 
 	public constructor(app: App, plugin: LanguageToolPlugin) {
 		super(app, plugin);
@@ -149,14 +156,15 @@ export class LTSettingsTab extends PluginSettingTab {
 
 		const settings = this.plugin.settings;
 
-		this.endpointListeners = [async url => {
-			let lang: Language[] = [];
-			if (url) lang = await languages(url);
+		this.endpointListeners = [];
+		this.endpointListeners.push(async url => {
+			let lang: api.Language[] = [];
+			if (url) lang = await api.languages(url);
 			this.languages = lang;
 			for (const listener of this.languageListeners) {
 				await listener(lang);
 			}
-		}];
+		});
 		this.languageListeners = [];
 
 
@@ -287,14 +295,14 @@ export class LTSettingsTab extends PluginSettingTab {
 			frag.appendText('Enables the context menu for synonyms fetched from');
 			frag.createEl('br');
 			if (settings.synonyms != null) {
-				let api = SYNONYMS[settings.synonyms];
-				if (!api) {
+				let synonyms = api.SYNONYMS[settings.synonyms];
+				if (!synonyms) {
 					frag.appendText(' (unknown API)');
 					return
 				}
 				frag.createEl('a', {
-					text: api.url,
-					href: api.url,
+					text: synonyms.url,
+					href: synonyms.url,
 					attr: { target: '_blank' },
 				});
 			} else {
@@ -308,7 +316,7 @@ export class LTSettingsTab extends PluginSettingTab {
 		synonyms
 			.addDropdown(component => {
 				component.addOption('none', '---');
-				for (const lang of Object.keys(SYNONYMS)) {
+				for (const lang of Object.keys(api.SYNONYMS)) {
 					component.addOption(lang, lang);
 				}
 				component.setValue(settings.synonyms ?? 'none')
@@ -387,7 +395,12 @@ export class LTSettingsTab extends PluginSettingTab {
 			});
 		}
 
+		// ---------------------------------------------------------------------
+		// Spellcheck
+		// ---------------------------------------------------------------------
 		new Setting(containerEl).setName("Spellcheck Dictionary").setHeading();
+
+		let dictionaryComponent: TextAreaComponent | null = null;
 		new Setting(containerEl)
 			.setName('Ignored Words')
 			.setDesc('Words that should not be highlighted as spelling mistakes.')
@@ -396,12 +409,45 @@ export class LTSettingsTab extends PluginSettingTab {
 					.setPlaceholder('word1\nword2\n...')
 					.setValue(settings.dictionary.join('\n'))
 					.onChange(async value => {
-						settings.dictionary = value.split("\n").map(v => v.trim()).filter(v => v.length > 0);
-						await this.plugin.saveSettings()
+						let words = new Set(value.split("\n").map(v => v.trim()).filter(v => v.length > 0))
+						settings.dictionary = [...words].sort(cmpIgnoreCase);
+
+						if (await this.plugin.syncDictionary())
+							component.setValue(settings.dictionary.join('\n'));
 					});
 				component.inputEl.rows = 5;
+
+				this.endpointListeners.push(async url => {
+					let changed = await this.plugin.syncDictionary();
+					if (component != null && changed)
+						component.setValue(settings.dictionary.join("\n"));
+				});
+
+				dictionaryComponent = component;
 			});
 
+		new Setting(containerEl)
+			.setName('Sync with LanguageTool')
+			.setDesc('This is only supported for premium users.')
+			.addToggle(component => {
+				component
+					.setDisabled(endpoint !== "premium")
+					.setValue(settings.syncDictionary)
+					.onChange(async value => {
+						settings.syncDictionary = value;
+						let changed = await this.plugin.syncDictionary();
+
+						if (dictionaryComponent != null && changed)
+							dictionaryComponent.setValue(settings.dictionary.join("\n"));
+					});
+				this.endpointListeners.push(async url => {
+					component.setDisabled(endpointFromUrl(url) !== "premium");
+				});
+			});
+
+		// ---------------------------------------------------------------------
+		// Rules
+		// ---------------------------------------------------------------------
 		new Setting(containerEl)
 			.setName('Rule categories')
 			.setHeading()
