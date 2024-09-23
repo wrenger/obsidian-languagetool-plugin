@@ -6,7 +6,6 @@ export function categoryCssClass(categoryId: string): string {
 		case 'STYLE':
 		case 'SYNONYMS':
 			return 'lt-style';
-		case 'PUNCTUATION':
 		case 'TYPOS':
 			return 'lt-major';
 	}
