@@ -28,9 +28,9 @@ After installing and enabling the plugin, you can set up hotkeys (under Settings
 * **"Clear Suggestions"** clears the document or selected text of all red underlines from words or passages that were not corrected or changed.
 * **"Toggle Automatic Checking"** toggles ON/OFF the automatic spellchecking function as you write or change the document's contents.
 
-**LanguageTool tries to auto-detect the language used.** Selecting a specific language (under Settings / Plugin Options / LanguageTool Integration / Static language) usually is not necessary. **This feature enables the user to spellcheck in different languages within the same document** (e.g. a dissertation written in English with quotes in a foreign language), which is ordinarily not possible with the built-in spellcheck function of Obsidian.
+**LanguageTool tries to auto-detect the language used.** Selecting a specific language (under Settings / Plugin Options / LanguageTool Integration / Static language) usually is not necessary. **This feature enables the user to spellcheck in different languages within the same document** (e.g., a dissertation written in English with quotes in a foreign language), which is ordinarily not possible with the built-in spellcheck function of Obsidian.
 
-**Custom Spellchecker Dictionary:**  You can add words to this dictionary directly from the editor and remove them again in the Obsidian settings (`Settings / LanguageTool / Spellcheck Dictionary`).
+**Custom Spellchecker Dictionary:** You can add words to this dictionary directly from the editor and remove them again in the Obsidian settings (`Settings / LanguageTool / Spellcheck Dictionary`).
 
 ## Premium Accounts
 

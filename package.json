@@ -1,7 +1,7 @@
 {
     "name": "obsidian-languagetool",
     "version": "1.0.9",
-    "description": "Inofficial plugin that integrates the LanguageTool spell and grammar checker into obsidian.",
+    "description": "Unofficial integration of the LanguageTool spell and grammar checker.",
     "main": "main.js",
     "scripts": {
         "dev": "node esbuild.config.mjs",

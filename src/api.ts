@@ -183,8 +183,6 @@ export namespace api {
 	class SynonymEn implements SynonymApi {
 		url = "https://qb-grammar-en.languagetool.org/phrasal-paraphraser/subscribe";
 		async query(sentence: string, selection: { from: number; to: number }): Promise<string[]> {
-			const PATH = "$.data.suggestions[*][*]@string()";
-
 			let index = sentence.slice(0, selection.from).split(/\s+/).length;
 			let word = sentence.slice(selection.from, selection.to);
 
@@ -204,9 +202,8 @@ export namespace api {
 				response_queue: "string"
 			};
 
-			let res: any;
 			try {
-				res = await requestUrl({
+				let res = await requestUrl({
 					url: this.url,
 					method: 'POST',
 					headers: {
@@ -214,7 +211,7 @@ export namespace api {
 					},
 					body: JSON.stringify(request)
 				}).json;
-				return jsonPathA<string>(PATH, res);
+				return jsonPathA<string>("$.data.suggestions[*][*]@string()", res);
 			} catch (e) {
 				throw new Error(`Requesting synonyms failed\n${e}`);
 			}
@@ -228,9 +225,8 @@ export namespace api {
 			let before = sentence.slice(0, selection.from).split(/\s+/).join("+");
 			let after = sentence.slice(selection.to).split(/\s+/).join("+");
 
-			let res: any;
 			try {
-				res = await requestUrl({
+				let res = await requestUrl({
 					url: sUrl(`${this.url}/${word}`, { before, after }).href,
 					method: 'GET',
 				}).json;
