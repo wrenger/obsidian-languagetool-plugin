@@ -1,5 +1,5 @@
 import * as Remark from 'annotatedtext-remark';
-import { LTSettings } from './settings';
+import { endpointFromUrl, getEndpoint, LTSettings } from './settings';
 import { RequestUrlResponse, requestUrl } from "obsidian";
 import { JSONPath } from "jsonpath-plus";
 
@@ -25,6 +25,7 @@ export namespace api {
 		settings: LTSettings,
 		offset: number,
 		text: string,
+		language?: string,
 	): Promise<LTMatch[]> {
 		const parsedText = Remark.build(text, {
 			...Remark.defaults,
@@ -44,9 +45,18 @@ export namespace api {
 			},
 		});
 
+		let length = parsedText.annotation.reduce((acc, a) => acc + (a.text?.length ?? a.interpretAs?.length ?? 0), 0);
+
+		const endpoint = getEndpoint(settings.serverUrl);
+		if (length > endpoint.maxSize) {
+			throw new Error(`Text too long for LanguageTool\n${length} characters, max is ${endpoint.maxSize}\n\nSelect a portion of the document and try again!`);
+		}
+
+		language = language ?? settings.staticLanguage;
+
 		const params: { [key: string]: string } = {
 			data: JSON.stringify(parsedText),
-			language: settings.staticLanguage ?? 'auto',
+			language: language ?? 'auto',
 			enabledOnly: 'false',
 			level: settings.pickyMode ? 'picky' : 'default',
 		};
@@ -64,7 +74,7 @@ export namespace api {
 		if (settings.disabledRules)
 			params.disabledRules = settings.disabledRules;
 
-		if (settings.staticLanguage == null)
+		if (language == null)
 			params.preferredVariants = Object.values(settings.languageVariety).join(',');
 
 		if (settings.apikey && settings.username) {
@@ -74,6 +84,7 @@ export namespace api {
 
 		let res: RequestUrlResponse;
 		try {
+			console.log(`LanguageTool: Checking ${length} characters`);
 			res = await requestUrl({
 				url: `${settings.serverUrl}/v2/check`,
 				method: 'POST',

@@ -326,6 +326,10 @@ export default class LanguageToolPlugin extends Plugin {
 	 * Check the current document, adding underlines.
 	 */
 	public async runDetection(editor: EditorView, range?: LTRange): Promise<void> {
+		let file = this.app.workspace.getActiveFile();
+		let cache = file && this.app.metadataCache.getFileCache(file);
+		let language = cache?.frontmatter?.lt_language;
+
 		const selection = editor.state.selection.main;
 		if (!range && !selection.empty) {
 			range = { ...selection };
@@ -347,12 +351,12 @@ export default class LanguageToolPlugin extends Plugin {
 		let matches: api.LTMatch[];
 		try {
 			this.setStatusBarWorking();
-			matches = await api.check(this.settings, offset, text);
+			matches = await api.check(this.settings, offset, text, language);
 		} catch (e) {
 			console.error(e);
 			if (e instanceof Error) {
 				this.pushLogs(e);
-				new Notice(e.message, 5000);
+				new Notice(e.message, 8000);
 			}
 			return;
 		} finally {

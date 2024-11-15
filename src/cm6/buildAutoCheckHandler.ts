@@ -18,7 +18,7 @@ export function buildAutoCheckHandler(plugin: LanguageToolPlugin): Extension {
 		const view = update.view;
 		clearTimeout(debounceTimer);
 		debounceTimer = window.setTimeout(() => {
-			plugin.runDetection(view, {from: minRange, to: maxRange}).catch(e => {
+			plugin.runDetection(view, { from: minRange, to: maxRange }).catch(e => {
 				console.error(e);
 			});
 

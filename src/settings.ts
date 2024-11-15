@@ -16,13 +16,15 @@ import { cmpIgnoreCase } from "./helpers";
 const autoCheckDelayMax = 5000;
 const autoCheckDelayStep = 250;
 
-class Endpoint {
+export class Endpoint {
 	url: string;
 	requestsPerSec: number;
+	maxSize: number;
 
-	constructor(url: string, requestsPerSec: number) {
+	constructor(url: string, requestsPerSec: number, maxSize: number) {
 		this.url = url;
 		this.requestsPerSec = requestsPerSec;
+		this.maxSize = maxSize;
 	}
 	/** Return the minimum delay in ms */
 	get minDelay() {
@@ -32,9 +34,9 @@ class Endpoint {
 
 /** See https://languagetool.org/http-api/swagger-ui/# */
 const endpoints = {
-	standard: new Endpoint('https://api.languagetool.org', 20),
-	premium: new Endpoint('https://api.languagetoolplus.com', 80),
-	custom: new Endpoint('', 120),
+	standard: new Endpoint('https://api.languagetool.org', 20, 20000),
+	premium: new Endpoint('https://api.languagetoolplus.com', 80, 75000),
+	custom: new Endpoint('', 120, 1000000),
 };
 type EndpointType = keyof typeof endpoints;
 
@@ -43,6 +45,9 @@ export function endpointFromUrl(url: string): EndpointType {
 		if (value.url === url) return key as EndpointType;
 	}
 	return 'custom';
+}
+export function getEndpoint(url: string): Endpoint {
+	return endpoints[endpointFromUrl(url)];
 }
 
 export interface LTSettings {
