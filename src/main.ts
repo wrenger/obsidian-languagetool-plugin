@@ -1,6 +1,6 @@
 import { Command, Editor, MarkdownView, Menu, Notice, Plugin, setIcon, Tasks } from 'obsidian';
 import { Decoration, EditorView } from '@codemirror/view';
-import { StateEffect } from '@codemirror/state';
+import { ChangeSpec, StateEffect } from '@codemirror/state';
 import { DEFAULT_SETTINGS, endpointFromUrl, LTSettings, LTSettingsTab } from './settings';
 import { api } from './api';
 import { buildUnderlineExtension } from './cm6/underlineExtension';
@@ -94,6 +94,23 @@ export default class LanguageToolPlugin extends Plugin {
 				editorView.dispatch({
 					effects: [clearAllUnderlines.of(null)],
 				});
+			},
+		});
+		this.addCommand({
+			id: 'accept-all',
+			name: 'Accept all suggestions',
+			editorCallback: editor => {
+				// @ts-expect-error, not typed
+				const editorView = editor.cm as EditorView;
+				let changes: ChangeSpec[] = [];
+				let effects: StateEffect<LTRange>[] = [];
+				editorView.state.field(underlineField).between(0, Infinity, (from, to, value) => {
+					if (value.spec?.underline?.replacements?.length) {
+						changes.push({ from, to, insert: value.spec.underline.replacements[0] });
+						effects.push(clearUnderlinesInRange.of({ from, to }));
+					}
+				});
+				editorView.dispatch({ changes, effects });
 			},
 		});
 		this.addCommand({
