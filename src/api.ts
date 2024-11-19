@@ -45,18 +45,17 @@ export namespace api {
 			},
 		});
 
-		let length = parsedText.annotation.reduce((acc, a) => acc + (a.text?.length ?? a.interpretAs?.length ?? 0), 0);
+		const data = JSON.stringify(parsedText);
 
 		const endpoint = getEndpoint(settings.serverUrl);
-		if (length > endpoint.maxSize) {
-			throw new Error(`Text too long for LanguageTool\n${length} characters, max is ${endpoint.maxSize}\n\nSelect a portion of the document and try again!`);
+		if (data.length > endpoint.maxSize) {
+			throw new Error(`Text too long for LanguageTool\n${data.length} characters, max is ${endpoint.maxSize}\n\nSelect a portion of the document and try again!`);
 		}
 
-		language = language ?? settings.staticLanguage;
-
+		const lang = (language ?? settings.staticLanguage) ?? 'auto';
 		const params: { [key: string]: string } = {
-			data: JSON.stringify(parsedText),
-			language: language ?? 'auto',
+			data,
+			language: lang,
 			enabledOnly: 'false',
 			level: settings.pickyMode ? 'picky' : 'default',
 		};
@@ -84,7 +83,7 @@ export namespace api {
 
 		let res: RequestUrlResponse;
 		try {
-			console.log(`LanguageTool: Checking ${length} characters`);
+			console.log(`LanguageTool: Checking ${data.length} characters`);
 			res = await requestUrl({
 				url: `${settings.serverUrl}/v2/check`,
 				method: 'POST',
@@ -96,7 +95,7 @@ export namespace api {
 				},
 			});
 		} catch (e) {
-			console.log(e);
+			// TODO check if request was too long and display other error - currently no access to response body
 			throw new Error(`Request to LanguageTool failed: Please check your connection and server URL.\n${e}`);
 		}
 		if (res.json == null)
