@@ -73,7 +73,7 @@ export namespace api {
 		if (settings.disabledRules)
 			params.disabledRules = settings.disabledRules;
 
-		if (language == null)
+		if (lang == 'auto')
 			params.preferredVariants = Object.values(settings.languageVariety).join(',');
 
 		if (settings.apikey && settings.username) {
