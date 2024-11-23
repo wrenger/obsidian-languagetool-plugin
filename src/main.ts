@@ -8,6 +8,7 @@ import { LTRange, addUnderline, clearAllUnderlines, clearUnderlinesInRange, unde
 import { syntaxTree } from "@codemirror/language";
 import { BrowserWindow } from "electron";
 import { cmpIgnoreCase, setDifference, setIntersect, setUnion } from "./helpers";
+import markdown from "./markdown";
 
 export const SUGGESTIONS = 5;
 
@@ -351,7 +352,15 @@ export default class LanguageToolPlugin extends Plugin {
 		let matches: api.LTMatch[];
 		try {
 			this.setStatusBarWorking();
-			matches = await api.check(this.settings, offset, text, language);
+
+			let annotations = await markdown.parseAndAnnotate(text);
+			// reduce request size
+			annotations.optimize();
+
+			console.info(`Checking ${annotations.length()} characters...`);
+			console.debug("Text", JSON.stringify(annotations, undefined, '  '));
+
+			matches = await api.check(this.settings, offset, annotations, language);
 		} catch (e) {
 			console.error(e);
 			if (e instanceof Error) {
