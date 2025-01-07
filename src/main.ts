@@ -356,7 +356,7 @@ export default class LanguageToolPlugin extends Plugin {
 			console.error(e);
 			if (e instanceof Error) {
 				this.pushLogs(e);
-				new Notice(e.message, 8000);
+				new Notice(e.message, 20000);
 			}
 			return;
 		} finally {

@@ -1,5 +1,5 @@
 import * as Remark from 'annotatedtext-remark';
-import { endpointFromUrl, getEndpoint, LTSettings } from './settings';
+import { endpointFromUrl, LTSettings } from './settings';
 import { RequestUrlResponse, requestUrl } from "obsidian";
 import { JSONPath } from "jsonpath-plus";
 
@@ -47,11 +47,6 @@ export namespace api {
 
 		const data = JSON.stringify(parsedText);
 
-		const endpoint = getEndpoint(settings.serverUrl);
-		if (data.length > endpoint.maxSize) {
-			throw new Error(`Text too long for LanguageTool\n${data.length} characters, max is ${endpoint.maxSize}\n\nSelect a portion of the document and try again!`);
-		}
-
 		const lang = (language ?? settings.staticLanguage) ?? 'auto';
 		const params: { [key: string]: string } = {
 			data,
@@ -76,7 +71,8 @@ export namespace api {
 		if (lang == 'auto')
 			params.preferredVariants = Object.values(settings.languageVariety).join(',');
 
-		if (settings.apikey && settings.username) {
+		const endpointType = endpointFromUrl(settings.serverUrl);
+		if (endpointType !== "standard" && settings.apikey && settings.username) {
 			params.username = settings.username;
 			params.apiKey = settings.apikey;
 		}
@@ -88,16 +84,21 @@ export namespace api {
 				url: `${settings.serverUrl}/v2/check`,
 				method: 'POST',
 				body: new URLSearchParams(params).toString(),
-				throw: true,
+				throw: false,
 				headers: {
 					'Content-Type': 'application/x-www-form-urlencoded',
 					Accept: 'application/json',
 				},
 			});
 		} catch (e) {
-			// TODO check if request was too long and display other error - currently no access to response body
 			throw new Error(`Request to LanguageTool failed: Please check your connection and server URL.\n${e}`);
 		}
+
+		if (res.status === 504 || res.status === 503)
+			throw new Error(`Request to LanguageTool timed out. Please try again later.`);
+		if (res.status !== 200)
+			throw new Error(`Request to LanguageTool failed ${res.status}:\n${res.text}`);
+
 		if (res.json == null)
 			throw new Error(`Error processing response from LanguageTool.`);
 
