@@ -38,10 +38,12 @@
         "builtin-modules": "4.0.0",
         "electron": "^33.0.2",
         "esbuild": "0.24.0",
-        "eslint": "^9.13.0",
+        "eslint": "^9.17.0",
+        "globals": "^15.14.0",
         "obsidian": "^1.7.2",
         "tslib": "^2.8.0",
-        "typescript": "^5.6.3"
+        "typescript": "^5.6.3",
+        "typescript-eslint": "^8.19.1"
     },
     "dependencies": {
         "annotatedtext-remark": "^1.0.10",

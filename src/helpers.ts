@@ -14,22 +14,22 @@ export function categoryCssClass(categoryId: string): string {
 }
 
 export function setDifference<T>(setA: Set<T>, setB: Set<T>): Set<T> {
-	let difference = new Set(setA)
-	for (let elem of setB) {
+	const difference = new Set(setA)
+	for (const elem of setB) {
 		difference.delete(elem)
 	}
 	return difference
 }
 export function setUnion<T>(setA: Set<T>, setB: Set<T>): Set<T> {
-	let union = new Set(setA)
-	for (let elem of setB) {
+	const union = new Set(setA)
+	for (const elem of setB) {
 		union.add(elem)
 	}
 	return union
 }
 export function setIntersect<T>(setA: Set<T>, setB: Set<T>): Set<T> {
-	let intersection = new Set<T>()
-	for (let elem of setB) {
+	const intersection = new Set<T>()
+	for (const elem of setB) {
 		if (setA.has(elem)) {
 			intersection.add(elem)
 		}

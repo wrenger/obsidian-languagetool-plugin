@@ -1,6 +1,6 @@
 import * as Remark from 'annotatedtext-remark';
 import { endpointFromUrl, LTSettings } from './settings';
-import { RequestUrlResponse, requestUrl } from "obsidian";
+import { RequestUrlParam, RequestUrlResponse, requestUrl } from "obsidian";
 import { JSONPath } from "jsonpath-plus";
 
 /** LanguageTool Check API: https://languagetool.org/http-api/swagger-ui */
@@ -77,35 +77,23 @@ export namespace api {
 			params.apiKey = settings.apikey;
 		}
 
-		let res: RequestUrlResponse;
-		try {
-			console.log(`LanguageTool: Checking ${data.length} characters`);
-			res = await requestUrl({
-				url: `${settings.serverUrl}/v2/check`,
-				method: 'POST',
-				body: new URLSearchParams(params).toString(),
-				throw: false,
-				headers: {
-					'Content-Type': 'application/x-www-form-urlencoded',
-					Accept: 'application/json',
-				},
-			});
-		} catch (e) {
-			throw new Error(`Request to LanguageTool failed: Please check your connection and server URL.\n${e}`);
-		}
-
-		if (res.status === 504 || res.status === 503)
-			throw new Error(`Request to LanguageTool timed out. Please try again later.`);
-		if (res.status !== 200)
-			throw new Error(`Request to LanguageTool failed ${res.status}:\n${res.text}`);
+		const res = await requestUrlChecked({
+			url: `${settings.serverUrl}/v2/check`,
+			method: 'POST',
+			body: new URLSearchParams(params).toString(),
+			headers: {
+				'Content-Type': 'application/x-www-form-urlencoded',
+				Accept: 'application/json',
+			},
+		});
 
 		if (res.json == null)
 			throw new Error(`Error processing response from LanguageTool.`);
 
-		let matches = jsonPathA<any>("$.matches[*]", res.json);
+		const matches = jsonPathA<any>("$.matches[*]", res.json);
 		return matches.map(match => {
-			let from = jsonPath<number>("$.offset@number()", match);
-			let to = from + jsonPath<number>("$.length@number()", match);
+			const from = jsonPath<number>("$.offset@number()", match);
+			const to = from + jsonPath<number>("$.length@number()", match);
 			return {
 				text: text.slice(from, to),
 				from: offset + from,
@@ -137,13 +125,13 @@ export namespace api {
 			throw Error(`Syncing words is only supported for premium users`);
 
 		try {
-			const res = await requestUrl({
+			const res = (await requestUrlChecked({
 				url: sUrl(`${settings.serverUrl}/v2/words`, {
 					username: settings.username,
 					apiKey: settings.apikey,
 					limit: "1000",
 				}).href,
-			}).json;
+			})).json;
 			return jsonPathA<string>("$.words[*]@string()", res);
 		} catch (e) {
 			throw new Error(`Requesting words failed\n${e}`);
@@ -154,14 +142,14 @@ export namespace api {
 			throw Error(`Syncing words is only supported for premium users`);
 
 		try {
-			const res = await requestUrl({
+			const res = (await requestUrlChecked({
 				url: sUrl(`${settings.serverUrl}/v2/words/add`, {
 					username: settings.username,
 					apiKey: settings.apikey,
 					word,
 				}).href,
 				method: "POST",
-			}).json;
+			})).json;
 			return jsonPath<boolean>("$.added@boolean()", res);
 		} catch (e) {
 			throw new Error(`Adding words failed\n${e}`);
@@ -172,14 +160,14 @@ export namespace api {
 			throw Error(`Syncing words is only supported for premium users`);
 
 		try {
-			const res = await requestUrl({
+			const res = (await requestUrlChecked({
 				url: sUrl(`${settings.serverUrl}/v2/words/delete`, {
 					username: settings.username,
 					apiKey: settings.apikey,
 					word,
 				}).href,
 				method: "POST",
-			}).json;
+			})).json;
 			return jsonPath<boolean>("$.deleted@boolean()", res);
 		} catch (e) {
 			throw new Error(`Deleting words failed\n${e}`);
@@ -194,10 +182,10 @@ export namespace api {
 	class SynonymEn implements SynonymApi {
 		url = "https://qb-grammar-en.languagetool.org/phrasal-paraphraser/subscribe";
 		async query(sentence: string, selection: { from: number; to: number }): Promise<string[]> {
-			let index = sentence.slice(0, selection.from).split(/\s+/).length;
-			let word = sentence.slice(selection.from, selection.to);
+			const index = sentence.slice(0, selection.from).split(/\s+/).length;
+			const word = sentence.slice(selection.from, selection.to);
 
-			let request = {
+			const request = {
 				message: {
 					indices: [index],
 					mode: 0,
@@ -214,14 +202,14 @@ export namespace api {
 			};
 
 			try {
-				let res = await requestUrl({
+				const res = (await requestUrlChecked({
 					url: this.url,
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
 					},
 					body: JSON.stringify(request)
-				}).json;
+				})).json;
 				return jsonPathA<string>("$.data.suggestions[*][*]@string()", res);
 			} catch (e) {
 				throw new Error(`Requesting synonyms failed\n${e}`);
@@ -232,15 +220,15 @@ export namespace api {
 	class SynonymDe implements SynonymApi {
 		url = "https://synonyms.languagetool.org/synonyms/de";
 		async query(sentence: string, selection: { from: number; to: number }): Promise<string[]> {
-			let word = sentence.slice(selection.from, selection.to).trim();
-			let before = sentence.slice(0, selection.from).split(/\s+/).join("+");
-			let after = sentence.slice(selection.to).split(/\s+/).join("+");
+			const word = sentence.slice(selection.from, selection.to).trim();
+			const before = sentence.slice(0, selection.from).split(/\s+/).join("+");
+			const after = sentence.slice(selection.to).split(/\s+/).join("+");
 
 			try {
-				let res = await requestUrl({
+				const res = (await requestUrlChecked({
 					url: sUrl(`${this.url}/${word}`, { before, after }).href,
 					method: 'GET',
-				}).json;
+				})).json;
 				return jsonPathA<string>("$.synsets[*].terms[*].term@string()", res);
 			} catch (e) {
 				throw new Error(`Requesting synonyms failed\n${e}`);
@@ -254,15 +242,32 @@ export namespace api {
 	};
 
 
+	async function requestUrlChecked(request: RequestUrlParam): Promise<RequestUrlResponse> {
+		let response: RequestUrlResponse;
+		try {
+			response = await requestUrl({ ...request, throw: false });
+		} catch (e) {
+			throw new Error(`Request to LanguageTool failed: Please check your connection and server URL.\n${e}`);
+		}
+		if (response.status === 504 || response.status === 503)
+			throw new Error(`Request to LanguageTool timed out. Please try again later.`);
+		if (response.status !== 200) {
+			let message = response.text;
+			if (message.length > 310)
+				message = message.substring(0, 300) + "...";
+			throw new Error(`Request to LanguageTool failed ${response.status}:\n${message}`);
+		}
+		return response;
+	}
 
 	function jsonPath<T>(path: string, json: string | number | boolean | object | any[] | null): T {
-		let res = JSONPath({ path: path, json: json, wrap: false, eval: false });
+		const res = JSONPath({ path: path, json: json, wrap: false, eval: false });
 		if (res == null)
 			throw new Error(`Error parsing response.`);
 		return res as T;
 	}
 	function jsonPathA<T>(path: string, json: string | number | boolean | object | any[] | null): T[] {
-		let res = JSONPath({ path: path, json: json, wrap: true, eval: false });
+		const res = JSONPath({ path: path, json: json, wrap: true, eval: false });
 		if (res == null || !(res instanceof Array))
 			throw new Error(`Error parsing response.`);
 		return res as T[];

@@ -304,7 +304,7 @@ export class LTSettingsTab extends PluginSettingTab {
 			frag.appendText('Enables the context menu for synonyms fetched from');
 			frag.createEl('br');
 			if (settings.synonyms != null) {
-				let synonyms = api.SYNONYMS[settings.synonyms];
+				const synonyms = api.SYNONYMS[settings.synonyms];
 				if (!synonyms) {
 					frag.appendText(' (unknown API)');
 					return
@@ -319,7 +319,7 @@ export class LTSettingsTab extends PluginSettingTab {
 			}
 		}
 
-		let synonyms = new Setting(containerEl)
+		const synonyms = new Setting(containerEl)
 			.setName('Find synonyms')
 			.setDesc(createFragment(synonymsDesc))
 		synonyms
@@ -392,13 +392,13 @@ export class LTSettingsTab extends PluginSettingTab {
 			.setHeading()
 			.setDesc('Some languages have varieties depending on the country they are spoken in.');
 
-		let langVariants = {
+		const langVariants = {
 			en: "English",
 			de: "German",
 			pt: "Portuguese",
 			ca: "Catalan",
 		};
-		for (let [id, lang] of Object.entries(langVariants)) {
+		for (const [id, lang] of Object.entries(langVariants)) {
 			new Setting(containerEl).setName(`Interpret ${lang} as`).addDropdown(async component => {
 				this.configureLanguageVariants(component, id);
 			});
@@ -538,13 +538,13 @@ export class DictionaryModal extends Modal {
 		this.words = this.plugin.settings.dictionary;
 		const { contentEl } = this;
 
-		let createButtons = (container: HTMLDivElement) => {
+		const createButtons = (container: HTMLDivElement) => {
 			container.replaceChildren(...this.words.map(word => container.createDiv(
 				{ cls: "multi-select-pill" }, pill => {
 					pill.createDiv({ cls: "multi-select-pill-content" },
 						pill => pill.createSpan({ text: word }));
 					pill.createDiv({ cls: "multi-select-pill-remove-button" }, remove => {
-						remove.appendChild(getIcon("x")!!);
+						remove.appendChild(getIcon("x")!);
 						remove.onClickEvent(() => {
 							this.words.remove(word);
 							createButtons(container);
@@ -569,7 +569,7 @@ export class DictionaryModal extends Modal {
 
 		let newWord = "";
 		let addComponent: null | TextComponent = null;
-		let addWord = () => {
+		const addWord = () => {
 			if (newWord) {
 				this.words = [...new Set([...this.words, newWord])].sort(cmpIgnoreCase);
 				if (buttonContainer) createButtons(buttonContainer);
